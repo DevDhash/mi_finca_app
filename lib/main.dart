@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
+import 'package:mi_finca_app/features/animals/presentation/screens/animal_list_screen.dart';
 void main() {
   runApp(
     const ProviderScope(
@@ -41,7 +41,7 @@ class HomeScreen extends StatelessWidget {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => const AnimalsScreen(),
+              builder: (_) => const AnimalListScreen(),
             ),
           );
         },
