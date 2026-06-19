@@ -1,16 +1,29 @@
-# mi_finca_app
+# Mi Finca
 
-A new Flutter project.
+MVP móvil offline-first para administrar animales, potreros, movimientos y gastos de una finca ganadera.
 
-## Getting Started
+## Funcionalidad
 
-This project is a starting point for a Flutter application.
+- Acceso y creación de cuenta simulados, más un modo demostración.
+- Configuración inicial de finca.
+- Dashboard e indicadores básicos.
+- Registro de animales en tres pasos, fotos persistentes, detalle y movimiento entre potreros.
+- Registro y estado de potreros, con rotación manual sugerida.
+- Gastos y resumen mensual.
+- Persistencia SQLite local mediante Drift y cola de cambios pendientes.
+- Sincronización simulada preparada para sustituirse por un backend.
 
-A few resources to get you started if this is your first Flutter project:
+## Integración futura con backend
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+La UI depende de `AppRepository` y `RemoteGateway`. Para integrar una API, implementa esos contratos y reemplaza sus providers en `lib/app/state/app_controller.dart`; las pantallas no necesitan cambios.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+El login del MVP es local: acepta cualquier correo y una clave de al menos cuatro caracteres. `MockRemoteGateway` solo simula el envío de cambios.
+
+## Ejecutar
+
+```bash
+flutter pub get
+flutter run
+```
+
+Para cargar datos de ejemplo, usa **Entrar con datos de demostración** en la pantalla de acceso.
