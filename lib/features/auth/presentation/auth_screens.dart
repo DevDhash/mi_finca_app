@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mi_finca_app/app/state/app_controller.dart';
 import 'package:mi_finca_app/app/theme/app_theme.dart';
+import 'package:mi_finca_app/features/auth/presentation/viewmodels/auth_view_model.dart';
+import 'package:mi_finca_app/features/onboarding/presentation/viewmodels/onboarding_view_model.dart';
 
 class AuthScreen extends ConsumerStatefulWidget {
   const AuthScreen({super.key});
@@ -32,7 +33,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     });
     try {
       await ref
-          .read(appControllerProvider.notifier)
+          .read(authViewModelProvider.notifier)
           .login(
             email: email.text,
             password: password.text,
@@ -145,8 +146,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   onPressed: busy
                       ? null
                       : () => ref
-                            .read(appControllerProvider.notifier)
-                            .enterDemo(),
+                            .read(onboardingViewModelProvider.notifier)
+                            .loadDemo(),
                   icon: const Icon(Icons.visibility_outlined),
                   label: const Text('Entrar con datos de demostración'),
                 ),
@@ -228,8 +229,8 @@ class _FarmSetupScreenState extends ConsumerState<FarmSetupScreen> {
             onPressed: () async {
               if (!key.currentState!.validate()) return;
               await ref
-                  .read(appControllerProvider.notifier)
-                  .configureFarm(name.text, location.text, paddock.text);
+                  .read(onboardingViewModelProvider.notifier)
+                  .configure(name.text, location.text, paddock.text);
             },
             child: const Text('Guardar y comenzar'),
           ),

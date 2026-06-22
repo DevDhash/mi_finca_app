@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:mi_finca_app/app/state/app_controller.dart';
 import 'package:mi_finca_app/app/theme/app_theme.dart';
-import 'package:mi_finca_app/core/models/app_models.dart';
 import 'package:mi_finca_app/core/widgets/common_widgets.dart';
+import 'package:mi_finca_app/features/expenses/domain/entities/expense.dart';
+import 'package:mi_finca_app/features/expenses/presentation/viewmodels/expense_view_model.dart';
 import 'package:uuid/uuid.dart';
 
 class ExpenseListScreen extends ConsumerWidget {
   const ExpenseListScreen({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final data = ref.watch(appControllerProvider).requireValue;
+    final expenses = ref.watch(expenseViewModelProvider).requireValue;
+    final monthlyTotal = ref.watch(monthlyExpenseTotalProvider);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Costos y bodega'),
@@ -40,7 +41,7 @@ class ExpenseListScreen extends ConsumerWidget {
                     NumberFormat.currency(
                       locale: 'es_PE',
                       symbol: 'S/ ',
-                    ).format(data.monthlyExpenses),
+                    ).format(monthlyTotal),
                     style: const TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
@@ -51,7 +52,7 @@ class ExpenseListScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 20),
-          if (data.expenses.isEmpty)
+          if (expenses.isEmpty)
             SizedBox(
               height: 420,
               child: EmptyState(
@@ -62,7 +63,7 @@ class ExpenseListScreen extends ConsumerWidget {
               ),
             )
           else
-            ...data.expenses.map(
+            ...expenses.map(
               (e) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Card(
@@ -201,8 +202,8 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
     }
     final now = DateTime.now();
     await ref
-        .read(appControllerProvider.notifier)
-        .saveExpense(
+        .read(expenseViewModelProvider.notifier)
+        .save(
           Expense(
             id: const Uuid().v4(),
             category: category,

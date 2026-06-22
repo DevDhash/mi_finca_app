@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:mi_finca_app/app/state/app_controller.dart';
 import 'package:mi_finca_app/app/theme/app_theme.dart';
 import 'package:mi_finca_app/core/widgets/common_widgets.dart';
 import 'package:mi_finca_app/features/animals/presentation/screens/animal_screens.dart';
+import 'package:mi_finca_app/features/animals/presentation/viewmodels/animal_view_model.dart';
+import 'package:mi_finca_app/features/auth/presentation/viewmodels/auth_view_model.dart';
 import 'package:mi_finca_app/features/expenses/presentation/expense_screens.dart';
+import 'package:mi_finca_app/features/expenses/presentation/viewmodels/expense_view_model.dart';
+import 'package:mi_finca_app/features/farm/presentation/viewmodels/farm_view_model.dart';
 import 'package:mi_finca_app/features/paddocks/presentation/screens/paddock_screens.dart';
+import 'package:mi_finca_app/features/paddocks/presentation/viewmodels/paddock_view_model.dart';
+import 'package:mi_finca_app/features/sync/presentation/viewmodels/sync_view_model.dart';
 
 class MainShell extends ConsumerStatefulWidget {
   const MainShell({super.key});
@@ -18,7 +23,7 @@ class _MainShellState extends ConsumerState<MainShell> {
   int index = 0;
   @override
   Widget build(BuildContext context) {
-    final data = ref.watch(appControllerProvider).requireValue;
+    final sync = ref.watch(syncViewModelProvider).requireValue;
     const pages = [
       DashboardScreen(),
       AnimalListScreen(),
@@ -28,7 +33,7 @@ class _MainShellState extends ConsumerState<MainShell> {
     return Scaffold(
       body: Column(
         children: [
-          ConnectivityBanner(state: data),
+          ConnectivityBanner(state: sync),
           Expanded(
             child: IndexedStack(index: index, children: pages),
           ),
@@ -121,9 +126,14 @@ class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final data = ref.watch(appControllerProvider).requireValue;
+    final session = ref.watch(authViewModelProvider).requireValue;
+    final farm = ref.watch(farmViewModelProvider).requireValue;
+    final animals = ref.watch(animalViewModelProvider).requireValue.animals;
+    final paddocks = ref.watch(paddockViewModelProvider).requireValue;
+    final monthlyTotal = ref.watch(monthlyExpenseTotalProvider);
+    final sync = ref.watch(syncViewModelProvider).requireValue;
     final suggested =
-        (data.paddocks.where((p) => p.status != 'En uso').toList()
+        (paddocks.where((p) => p.status != 'En uso').toList()
               ..sort((a, b) => b.restDays.compareTo(a.restDays)))
             .firstOrNull;
     return Scaffold(
@@ -131,9 +141,9 @@ class DashboardScreen extends ConsumerWidget {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(data.farm?.name ?? 'Mi Finca'),
+            Text(farm?.name ?? 'Mi Finca'),
             Text(
-              'Hola, ${data.session?.name ?? ''}',
+              'Hola, ${session?.name ?? ''}',
               style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.normal,
@@ -155,7 +165,7 @@ class DashboardScreen extends ConsumerWidget {
               Expanded(
                 child: _Metric(
                   icon: Icons.pets,
-                  value: '${data.animals.length}',
+                  value: '${animals.length}',
                   label: 'Animales',
                 ),
               ),
@@ -164,7 +174,7 @@ class DashboardScreen extends ConsumerWidget {
                 child: _Metric(
                   icon: Icons.grass,
                   value:
-                      '${data.paddocks.where((p) => p.status == 'Disponible').length}/${data.paddocks.length}',
+                      '${paddocks.where((p) => p.status == 'Disponible').length}/${paddocks.length}',
                   label: 'Potreros libres',
                 ),
               ),
@@ -179,7 +189,7 @@ class DashboardScreen extends ConsumerWidget {
                   value: NumberFormat.compactCurrency(
                     locale: 'es_PE',
                     symbol: 'S/',
-                  ).format(data.monthlyExpenses),
+                  ).format(monthlyTotal),
                   label: 'Gastos del mes',
                 ),
               ),
@@ -187,7 +197,7 @@ class DashboardScreen extends ConsumerWidget {
               Expanded(
                 child: _Metric(
                   icon: Icons.cloud_upload_outlined,
-                  value: '${data.pendingChanges}',
+                  value: '${sync.pendingChanges}',
                   label: 'Cambios pendientes',
                 ),
               ),
@@ -217,7 +227,7 @@ class DashboardScreen extends ConsumerWidget {
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 10),
-          if (data.animals.isEmpty)
+          if (animals.isEmpty)
             const Card(
               child: Padding(
                 padding: EdgeInsets.all(16),
@@ -225,14 +235,14 @@ class DashboardScreen extends ConsumerWidget {
               ),
             )
           else
-            ...data.animals
+            ...animals
                 .take(3)
                 .map(
                   (a) => Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: AnimalListCard(
                       animal: a,
-                      paddockName: data.paddocks
+                      paddockName: paddocks
                           .where((p) => p.id == a.paddockId)
                           .firstOrNull
                           ?.name,
@@ -343,29 +353,32 @@ class IndicatorsScreen extends ConsumerWidget {
   const IndicatorsScreen({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final d = ref.watch(appControllerProvider).requireValue;
-    final avg = d.animals.where((a) => a.weight != null).toList();
+    final animals = ref.watch(animalViewModelProvider).requireValue.animals;
+    final paddocks = ref.watch(paddockViewModelProvider).requireValue;
+    final monthlyTotal = ref.watch(monthlyExpenseTotalProvider);
+    final sync = ref.watch(syncViewModelProvider).requireValue;
+    final avg = animals.where((a) => a.weight != null).toList();
     final average = avg.isEmpty
         ? 0
         : avg.fold<double>(0, (s, a) => s + a.weight!) / avg.length;
     final values = [
-      ('Animales', '${d.animals.length}', Icons.pets),
+      ('Animales', '${animals.length}', Icons.pets),
       (
         'Costos del mes',
         NumberFormat.compactCurrency(
           locale: 'es_PE',
           symbol: 'S/',
-        ).format(d.monthlyExpenses),
+        ).format(monthlyTotal),
         Icons.payments,
       ),
       (
         'Potreros libres',
-        '${d.paddocks.where((p) => p.status == 'Disponible').length}',
+        '${paddocks.where((p) => p.status == 'Disponible').length}',
         Icons.grass,
       ),
       (
         'Animales enfermos',
-        '${d.animals.where((a) => a.status == 'Enfermo').length}',
+        '${animals.where((a) => a.status == 'Enfermo').length}',
         Icons.health_and_safety,
       ),
       (
@@ -373,7 +386,7 @@ class IndicatorsScreen extends ConsumerWidget {
         '${average.toStringAsFixed(0)} kg',
         Icons.monitor_weight,
       ),
-      ('Cambios pendientes', '${d.pendingChanges}', Icons.cloud_upload),
+      ('Cambios pendientes', '${sync.pendingChanges}', Icons.cloud_upload),
     ];
     return Scaffold(
       appBar: AppBar(title: const Text('Indicadores')),
@@ -395,7 +408,7 @@ class SyncScreen extends ConsumerWidget {
   const SyncScreen({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final d = ref.watch(appControllerProvider).requireValue;
+    final d = ref.watch(syncViewModelProvider).requireValue;
     final icon = !d.isOnline
         ? Icons.cloud_off
         : d.isSyncing
@@ -444,13 +457,13 @@ class SyncScreen extends ConsumerWidget {
                 'Se reemplaza por connectivity_plus al integrar el backend.',
               ),
               value: d.isOnline,
-              onChanged: ref.read(appControllerProvider.notifier).setOnline,
+              onChanged: ref.read(syncViewModelProvider.notifier).setOnline,
             ),
             const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: !d.isOnline || d.pendingChanges == 0 || d.isSyncing
                   ? null
-                  : ref.read(appControllerProvider.notifier).syncNow,
+                  : ref.read(syncViewModelProvider.notifier).syncNow,
               icon: const Icon(Icons.sync),
               label: const Text('Sincronizar ahora'),
             ),
@@ -465,7 +478,8 @@ class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final d = ref.watch(appControllerProvider).requireValue;
+    final session = ref.watch(authViewModelProvider).requireValue;
+    final farm = ref.watch(farmViewModelProvider).requireValue;
     return Scaffold(
       appBar: AppBar(title: const Text('Perfil y ajustes')),
       body: ListView(
@@ -474,22 +488,22 @@ class ProfileScreen extends ConsumerWidget {
           const CircleAvatar(radius: 42, child: Icon(Icons.person, size: 42)),
           const SizedBox(height: 14),
           Text(
-            d.session?.name ?? '',
+            session?.name ?? '',
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
           ),
-          Text(d.session?.email ?? '', textAlign: TextAlign.center),
+          Text(session?.email ?? '', textAlign: TextAlign.center),
           const SizedBox(height: 24),
           Card(
             child: ListTile(
               leading: const Icon(Icons.landscape),
-              title: Text(d.farm?.name ?? ''),
-              subtitle: Text(d.farm?.location ?? ''),
+              title: Text(farm?.name ?? ''),
+              subtitle: Text(farm?.location ?? ''),
             ),
           ),
           const SizedBox(height: 24),
           OutlinedButton.icon(
-            onPressed: () => ref.read(appControllerProvider.notifier).signOut(),
+            onPressed: () => ref.read(authViewModelProvider.notifier).signOut(),
             icon: const Icon(Icons.logout),
             label: const Text('Cerrar sesión'),
           ),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
@@ -14,6 +15,9 @@ final class AppDatabase extends GeneratedDatabase {
 
   @override
   Iterable<TableInfo> get allTables => const [];
+
+  final _recordChanges = StreamController<void>.broadcast();
+  Stream<void> get recordChanges => _recordChanges.stream;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -57,8 +61,8 @@ final class AppDatabase extends GeneratedDatabase {
     Map<String, Object?> payload,
     DateTime updatedAt, {
     bool pending = true,
-  }) {
-    return customStatement(
+  }) async {
+    await customStatement(
       'INSERT OR REPLACE INTO records '
       '(collection, id, payload, updated_at, pending) VALUES (?, ?, ?, ?, ?)',
       [
@@ -69,12 +73,16 @@ final class AppDatabase extends GeneratedDatabase {
         pending ? 1 : 0,
       ],
     );
+    _recordChanges.add(null);
   }
 
-  Future<void> removeRecord(String collection, String id) => customStatement(
-    'DELETE FROM records WHERE collection = ? AND id = ?',
-    [collection, id],
-  );
+  Future<void> removeRecord(String collection, String id) async {
+    await customStatement(
+      'DELETE FROM records WHERE collection = ? AND id = ?',
+      [collection, id],
+    );
+    _recordChanges.add(null);
+  }
 
   Future<int> pendingCount() async {
     final row = await customSelect(
@@ -83,8 +91,10 @@ final class AppDatabase extends GeneratedDatabase {
     return row.read<int>('count');
   }
 
-  Future<void> markAllSynced() =>
-      customStatement('UPDATE records SET pending = 0');
+  Future<void> markAllSynced() async {
+    await customStatement('UPDATE records SET pending = 0');
+    _recordChanges.add(null);
+  }
 
   Future<String?> readSetting(String key) async {
     final row = await customSelect(
@@ -107,5 +117,12 @@ final class AppDatabase extends GeneratedDatabase {
       await customStatement('DELETE FROM records');
       await customStatement('DELETE FROM settings');
     });
+    _recordChanges.add(null);
+  }
+
+  @override
+  Future<void> close() async {
+    await _recordChanges.close();
+    await super.close();
   }
 }

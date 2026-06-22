@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mi_finca_app/app/state/app_controller.dart';
 import 'package:mi_finca_app/app/theme/app_theme.dart';
-import 'package:mi_finca_app/core/models/app_models.dart';
 import 'package:mi_finca_app/core/widgets/common_widgets.dart';
+import 'package:mi_finca_app/features/animals/presentation/viewmodels/animal_view_model.dart';
+import 'package:mi_finca_app/features/paddocks/domain/entities/paddock.dart';
+import 'package:mi_finca_app/features/paddocks/presentation/viewmodels/paddock_view_model.dart';
 import 'package:uuid/uuid.dart';
 
 class PaddockListScreen extends ConsumerWidget {
   const PaddockListScreen({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final data = ref.watch(appControllerProvider).requireValue;
+    final paddocks = ref.watch(paddockViewModelProvider).requireValue;
+    final animals = ref.watch(animalViewModelProvider).requireValue.animals;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Potreros'),
@@ -25,7 +27,7 @@ class PaddockListScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: data.paddocks.isEmpty
+      body: paddocks.isEmpty
           ? EmptyState(
               icon: Icons.grass,
               message:
@@ -35,13 +37,11 @@ class PaddockListScreen extends ConsumerWidget {
             )
           : ListView.separated(
               padding: const EdgeInsets.all(16),
-              itemCount: data.paddocks.length,
+              itemCount: paddocks.length,
               separatorBuilder: (_, _) => const SizedBox(height: 12),
               itemBuilder: (_, i) {
-                final p = data.paddocks[i];
-                final count = data.animals
-                    .where((a) => a.paddockId == p.id)
-                    .length;
+                final p = paddocks[i];
+                final count = animals.where((a) => a.paddockId == p.id).length;
                 return Card(
                   child: ListTile(
                     onTap: () => Navigator.push(
@@ -194,7 +194,7 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
       createdAt: old?.createdAt ?? now,
       updatedAt: now,
     );
-    await ref.read(appControllerProvider.notifier).savePaddock(p);
+    await ref.read(paddockViewModelProvider.notifier).save(p);
     if (mounted) {
       Navigator.pop(context);
       ScaffoldMessenger.of(
@@ -209,9 +209,14 @@ class PaddockDetailScreen extends ConsumerWidget {
   final String paddockId;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final data = ref.watch(appControllerProvider).requireValue;
-    final p = data.paddocks.firstWhere((p) => p.id == paddockId);
-    final animals = data.animals.where((a) => a.paddockId == p.id).toList();
+    final paddocks = ref.watch(paddockViewModelProvider).requireValue;
+    final p = paddocks.firstWhere((p) => p.id == paddockId);
+    final animals = ref
+        .watch(animalViewModelProvider)
+        .requireValue
+        .animals
+        .where((a) => a.paddockId == p.id)
+        .toList();
     return Scaffold(
       appBar: AppBar(
         title: Text(p.name),
@@ -292,8 +297,8 @@ class RotationScreen extends ConsumerWidget {
   const RotationScreen({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final data = ref.watch(appControllerProvider).requireValue;
-    final candidates = data.paddocks.where((p) => p.status != 'En uso').toList()
+    final paddocks = ref.watch(paddockViewModelProvider).requireValue;
+    final candidates = paddocks.where((p) => p.status != 'En uso').toList()
       ..sort((a, b) => b.restDays.compareTo(a.restDays));
     final suggested = candidates.firstOrNull;
     return Scaffold(
@@ -341,11 +346,11 @@ class RotationScreen extends ConsumerWidget {
             height: 110,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              itemCount: data.paddocks.length,
+              itemCount: paddocks.length,
               separatorBuilder: (_, _) =>
                   const Icon(Icons.arrow_forward, color: AppColors.muted),
               itemBuilder: (_, i) {
-                final p = data.paddocks[i];
+                final p = paddocks[i];
                 return SizedBox(
                   width: 130,
                   child: Card(

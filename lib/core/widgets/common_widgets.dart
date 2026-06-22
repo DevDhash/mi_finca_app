@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:mi_finca_app/app/state/app_controller.dart';
 import 'package:mi_finca_app/app/theme/app_theme.dart';
+import 'package:mi_finca_app/features/sync/presentation/viewmodels/sync_view_model.dart';
 
 class StatusChip extends StatelessWidget {
   const StatusChip(this.label, {super.key});
@@ -26,7 +26,7 @@ class StatusChip extends StatelessWidget {
 
 class ConnectivityBanner extends StatelessWidget {
   const ConnectivityBanner({super.key, required this.state});
-  final AppState state;
+  final SyncState state;
   @override
   Widget build(BuildContext context) {
     if (!state.isOnline) {

@@ -3,10 +3,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:mi_finca_app/app/state/app_controller.dart';
 import 'package:mi_finca_app/app/theme/app_theme.dart';
-import 'package:mi_finca_app/core/models/app_models.dart';
 import 'package:mi_finca_app/core/widgets/common_widgets.dart';
+import 'package:mi_finca_app/features/animals/domain/entities/animal.dart';
+import 'package:mi_finca_app/features/animals/presentation/viewmodels/animal_view_model.dart';
+import 'package:mi_finca_app/features/paddocks/presentation/viewmodels/paddock_view_model.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
@@ -22,8 +23,9 @@ class _AnimalListScreenState extends ConsumerState<AnimalListScreen> {
   String type = 'Todos';
   @override
   Widget build(BuildContext context) {
-    final data = ref.watch(appControllerProvider).requireValue;
-    final items = data.animals
+    final animals = ref.watch(animalViewModelProvider).requireValue.animals;
+    final paddocks = ref.watch(paddockViewModelProvider).requireValue;
+    final items = animals
         .where(
           (a) =>
               (type == 'Todos' || a.type == type) &&
@@ -80,7 +82,7 @@ class _AnimalListScreenState extends ConsumerState<AnimalListScreen> {
                     separatorBuilder: (_, _) => const SizedBox(height: 12),
                     itemBuilder: (_, i) => AnimalListCard(
                       animal: items[i],
-                      paddockName: data.paddocks
+                      paddockName: paddocks
                           .where((p) => p.id == items[i].paddockId)
                           .firstOrNull
                           ?.name,
@@ -233,7 +235,7 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
       createdAt: old?.createdAt ?? now,
       updatedAt: now,
     );
-    await ref.read(appControllerProvider.notifier).saveAnimal(animal);
+    await ref.read(animalViewModelProvider.notifier).save(animal);
     if (mounted) {
       Navigator.pop(context);
       ScaffoldMessenger.of(
@@ -244,7 +246,7 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final paddocks = ref.watch(appControllerProvider).requireValue.paddocks;
+    final paddocks = ref.watch(paddockViewModelProvider).requireValue;
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -471,12 +473,13 @@ class AnimalDetailScreen extends ConsumerWidget {
   final String animalId;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final data = ref.watch(appControllerProvider).requireValue;
-    final animal = data.animals.firstWhere((a) => a.id == animalId);
-    final paddock = data.paddocks
-        .where((p) => p.id == animal.paddockId)
-        .firstOrNull;
-    final moves = data.movements.where((m) => m.animalId == animalId).toList();
+    final animalState = ref.watch(animalViewModelProvider).requireValue;
+    final paddocks = ref.watch(paddockViewModelProvider).requireValue;
+    final animal = animalState.animals.firstWhere((a) => a.id == animalId);
+    final paddock = paddocks.where((p) => p.id == animal.paddockId).firstOrNull;
+    final moves = animalState.movements
+        .where((m) => m.animalId == animalId)
+        .toList();
     return Scaffold(
       appBar: AppBar(
         title: Text(animal.displayName),
@@ -492,7 +495,7 @@ class AnimalDetailScreen extends ConsumerWidget {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: FilledButton.icon(
-            onPressed: data.paddocks.length < 2
+            onPressed: paddocks.length < 2
                 ? null
                 : () => Navigator.push(
                     context,
@@ -558,7 +561,7 @@ class AnimalDetailScreen extends ConsumerWidget {
                         (m) => ListTile(
                           leading: const Icon(Icons.swap_horiz),
                           title: Text(
-                            data.paddocks
+                            paddocks
                                     .where((p) => p.id == m.toPaddockId)
                                     .firstOrNull
                                     ?.name ??
@@ -616,11 +619,10 @@ class _MoveAnimalScreenState extends ConsumerState<MoveAnimalScreen> {
   DateTime date = DateTime.now();
   @override
   Widget build(BuildContext context) {
-    final data = ref.watch(appControllerProvider).requireValue;
-    final animal = data.animals.firstWhere((a) => a.id == widget.animalId);
-    final options = data.paddocks
-        .where((p) => p.id != animal.paddockId)
-        .toList();
+    final animals = ref.watch(animalViewModelProvider).requireValue.animals;
+    final paddocks = ref.watch(paddockViewModelProvider).requireValue;
+    final animal = animals.firstWhere((a) => a.id == widget.animalId);
+    final options = paddocks.where((p) => p.id != animal.paddockId).toList();
     return Scaffold(
       appBar: AppBar(title: const Text('Mover de potrero')),
       body: ListView(
@@ -664,8 +666,8 @@ class _MoveAnimalScreenState extends ConsumerState<MoveAnimalScreen> {
                 ? null
                 : () async {
                     await ref
-                        .read(appControllerProvider.notifier)
-                        .moveAnimal(animal, destination!, date);
+                        .read(animalViewModelProvider.notifier)
+                        .move(animal, destination!, date);
                     if (context.mounted) {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
