@@ -157,7 +157,7 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
           ),
           const SizedBox(height: 14),
           DropdownButtonFormField<String>(
-            initialValue: status,
+            value: status,
             decoration: const InputDecoration(labelText: 'Estado'),
             items: [
               'Disponible',

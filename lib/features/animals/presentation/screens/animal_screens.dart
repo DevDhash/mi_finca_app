@@ -416,7 +416,7 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
               ),
               const SizedBox(height: 14),
               DropdownButtonFormField<String>(
-                initialValue: paddockId,
+              value: paddockId,
                 decoration: const InputDecoration(labelText: 'Potrero actual'),
                 items: paddocks
                     .map(
@@ -634,7 +634,7 @@ class _MoveAnimalScreenState extends ConsumerState<MoveAnimalScreen> {
           ),
           const SizedBox(height: 20),
           DropdownButtonFormField<String>(
-            initialValue: destination,
+            value: destination,
             decoration: const InputDecoration(labelText: 'Potrero destino'),
             items: options
                 .map((p) => DropdownMenuItem(value: p.id, child: Text(p.name)))

@@ -124,6 +124,7 @@ class _MainShellState extends ConsumerState<MainShell> {
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(authViewModelProvider).requireValue;
@@ -132,133 +133,414 @@ class DashboardScreen extends ConsumerWidget {
     final paddocks = ref.watch(paddockViewModelProvider).requireValue;
     final monthlyTotal = ref.watch(monthlyExpenseTotalProvider);
     final sync = ref.watch(syncViewModelProvider).requireValue;
+
     final suggested =
         (paddocks.where((p) => p.status != 'En uso').toList()
               ..sort((a, b) => b.restDays.compareTo(a.restDays)))
             .firstOrNull;
+
+    final availablePaddocks = paddocks
+        .where((p) => p.status == 'Disponible')
+        .length;
+
     return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      backgroundColor: const Color(0xFFF6F8F2),
+      body: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          _HomeHero(
+            farmName: farm?.name ?? 'Mi Finca',
+            userName: session?.name ?? '',
+          ),
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Resumen de la finca',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.text,
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: _Metric(
+                        icon: Icons.pets,
+                        value: '${animals.length}',
+                        label: 'Animales',
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _Metric(
+                        icon: Icons.grass,
+                        value: '$availablePaddocks/${paddocks.length}',
+                        label: 'Potreros libres',
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: _Metric(
+                        icon: Icons.receipt_long,
+                        value: NumberFormat.compactCurrency(
+                          locale: 'es_PE',
+                          symbol: 'S/',
+                        ).format(monthlyTotal),
+                        label: 'Gastos del mes',
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _Metric(
+                        icon: Icons.cloud_upload_outlined,
+                        value: '${sync.pendingChanges}',
+                        label: 'Cambios pendientes',
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 22),
+
+                const Text(
+                  'Accesos rápidos',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.text,
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: _HomeActionCard(
+                        icon: Icons.add_circle_outline,
+                        title: 'Registrar',
+                        subtitle: 'Nuevo animal',
+                        onTap: () => openAnimalForm(context),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _HomeActionCard(
+                        icon: Icons.add_location_alt_outlined,
+                        title: 'Potrero',
+                        subtitle: 'Crear espacio',
+                        onTap: () => openPaddockForm(context),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: _HomeActionCard(
+                        icon: Icons.swap_horiz,
+                        title: 'Movimiento',
+                        subtitle: 'Mover ganado',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const AnimalListScreen(),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _HomeActionCard(
+                        icon: Icons.receipt_long,
+                        title: 'Gasto',
+                        subtitle: 'Registrar costo',
+                        onTap: () => openExpenseForm(context),
+                      ),
+                    ),
+                  ],
+                ),
+
+                if (suggested != null) ...[
+                  const SizedBox(height: 22),
+                  Card(
+                    color: const Color(0xFFFFF3D8),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.all(18),
+                      leading: Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(
+                          Icons.lightbulb_outline,
+                          color: AppColors.warning,
+                        ),
+                      ),
+                      title: Text(
+                        '${suggested.name} puede estar listo para uso',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.text,
+                        ),
+                      ),
+                      subtitle: Text(
+                        'Lleva ${suggested.restDays} días de descanso.',
+                      ),
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 24),
+
+                const Text(
+                  'Registrados recientemente',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.text,
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                if (animals.isEmpty)
+                  Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.all(18),
+                      child: Text(
+                        'Don Finca te recomienda registrar tu primer animal desde el botón +.',
+                      ),
+                    ),
+                  )
+                else
+                  ...animals
+                      .take(3)
+                      .map(
+                        (a) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: AnimalListCard(
+                            animal: a,
+                            paddockName: paddocks
+                                .where((p) => p.id == a.paddockId)
+                                .firstOrNull
+                                ?.name,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    AnimalDetailScreen(animalId: a.id),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                const SizedBox(height: 100),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeHero extends StatelessWidget {
+  const _HomeHero({required this.farmName, required this.userName});
+
+  final String farmName;
+  final String userName;
+
+  static const String _donFincaPath = 'assets/images/don_finca_welcome.png';
+
+  @override
+  Widget build(BuildContext context) {
+    final greetingName = userName.trim().isEmpty ? '' : ', $userName';
+
+    return Container(
+      height: 315,
+      decoration: const BoxDecoration(
+        color: AppColors.primaryDark,
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(34),
+          bottomRight: Radius.circular(34),
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Stack(
           children: [
-            Text(farm?.name ?? 'Mi Finca'),
-            Text(
-              'Hola, ${session?.name ?? ''}',
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.normal,
+            Positioned(
+              top: 18,
+              left: 22,
+              right: 22,
+              child: Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(Icons.agriculture, color: Colors.white),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      farmName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () {},
+                    icon: const Icon(Icons.menu, color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+
+            Positioned(
+              left: 22,
+              top: 92,
+              width: 220,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '¡Hola$greetingName!',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 25,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Soy Don Finca',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 29,
+                      fontWeight: FontWeight.w900,
+                      height: 1.05,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Tu asistente para gestionar ganado, potreros y gastos.',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.84),
+                      fontSize: 15,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            Positioned(
+              right: -20,
+              bottom: -8,
+              child: Image.asset(
+                _donFincaPath,
+                height: 238,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  return const SizedBox(
+                    height: 220,
+                    width: 150,
+                    child: Icon(Icons.person, size: 90, color: Colors.white),
+                  );
+                },
               ),
             ),
           ],
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          const Text(
-            'Resumen de la finca',
-            style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _Metric(
-                  icon: Icons.pets,
-                  value: '${animals.length}',
-                  label: 'Animales',
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _Metric(
-                  icon: Icons.grass,
-                  value:
-                      '${paddocks.where((p) => p.status == 'Disponible').length}/${paddocks.length}',
-                  label: 'Potreros libres',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _Metric(
-                  icon: Icons.receipt_long,
-                  value: NumberFormat.compactCurrency(
-                    locale: 'es_PE',
-                    symbol: 'S/',
-                  ).format(monthlyTotal),
-                  label: 'Gastos del mes',
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _Metric(
-                  icon: Icons.cloud_upload_outlined,
-                  value: '${sync.pendingChanges}',
-                  label: 'Cambios pendientes',
-                ),
-              ),
-            ],
-          ),
-          if (suggested != null) ...[
-            const SizedBox(height: 18),
-            Card(
-              color: const Color(0xFFFBEBD0),
-              child: ListTile(
-                contentPadding: const EdgeInsets.all(16),
-                leading: const Icon(
-                  Icons.lightbulb_outline,
-                  color: AppColors.warning,
-                ),
-                title: Text(
-                  '${suggested.name} puede estar listo para uso',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Text('Lleva ${suggested.restDays} días de descanso.'),
-              ),
-            ),
-          ],
-          const SizedBox(height: 22),
-          const Text(
-            'Registrados recientemente',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 10),
-          if (animals.isEmpty)
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('Registra tu primer animal desde el botón +.'),
-              ),
-            )
-          else
-            ...animals
-                .take(3)
-                .map(
-                  (a) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: AnimalListCard(
-                      animal: a,
-                      paddockName: paddocks
-                          .where((p) => p.id == a.paddockId)
-                          .firstOrNull
-                          ?.name,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => AnimalDetailScreen(animalId: a.id),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-        ],
-      ),
     );
   }
+}
+
+class _HomeActionCard extends StatelessWidget {
+  const _HomeActionCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    elevation: 0,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(22),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              backgroundColor: AppColors.primaryLight,
+              child: Icon(icon, color: AppColors.primaryDark),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+                color: AppColors.text,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: const TextStyle(color: AppColors.muted, fontSize: 13),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _Metric extends StatelessWidget {
