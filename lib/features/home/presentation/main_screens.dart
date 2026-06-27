@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:mi_finca_app/app/theme/app_theme.dart';
+import 'package:mi_finca_app/core/constants/app_images.dart';
 import 'package:mi_finca_app/core/widgets/common_widgets.dart';
 import 'package:mi_finca_app/features/animals/presentation/screens/animal_screens.dart';
 import 'package:mi_finca_app/features/animals/presentation/viewmodels/animal_view_model.dart';
@@ -15,111 +16,252 @@ import 'package:mi_finca_app/features/sync/presentation/viewmodels/sync_view_mod
 
 class MainShell extends ConsumerStatefulWidget {
   const MainShell({super.key});
+
   @override
   ConsumerState<MainShell> createState() => _MainShellState();
 }
 
 class _MainShellState extends ConsumerState<MainShell> {
   int index = 0;
+  bool _isFabOpen = false;
+
   @override
   Widget build(BuildContext context) {
-    final sync = ref.watch(syncViewModelProvider).requireValue;
     const pages = [
       DashboardScreen(),
       AnimalListScreen(),
       PaddockListScreen(),
       MoreScreen(),
     ];
+
     return Scaffold(
-      body: Column(
+      body: Stack(
         children: [
-          ConnectivityBanner(state: sync),
-          Expanded(
-            child: IndexedStack(index: index, children: pages),
+          Column(
+            children: [
+              Expanded(
+                child: IndexedStack(index: index, children: pages),
+              ),
+              NavigationBar(
+                selectedIndex: index,
+                onDestinationSelected: (v) {
+                  _closeFab();
+                  setState(() => index = v);
+                },
+                destinations: const [
+                  NavigationDestination(
+                    icon: Icon(Icons.home_outlined),
+                    selectedIcon: Icon(Icons.home),
+                    label: 'Inicio',
+                  ),
+                  NavigationDestination(
+                    icon: _NavAssetIcon(path: AppImages.iconCabezaToro),
+                    selectedIcon: _NavAssetIcon(
+                      path: AppImages.iconCabezaToro,
+                      selected: true,
+                    ),
+                    label: 'Animales',
+                  ),
+                  NavigationDestination(
+                    icon: _NavAssetIcon(path: AppImages.iconPasto),
+                    selectedIcon: _NavAssetIcon(
+                      path: AppImages.iconPasto,
+                      selected: true,
+                    ),
+                    label: 'Potreros',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.more_horiz),
+                    label: 'Más',
+                  ),
+                ],
+              ),
+            ],
           ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _quickActions(context),
-        child: const Icon(Icons.add),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: index,
-        onDestinationSelected: (v) => setState(() => index = v),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Inicio',
+          if (_isFabOpen)
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: _closeFab,
+                child: Container(color: Colors.black.withValues(alpha: 0.45)),
+              ),
+            ),
+          Positioned(
+            right: 20,
+            bottom: 86,
+            child: _ExpandableFabMenu(
+              isOpen: _isFabOpen,
+              onToggle: _toggleFab,
+              actions: [
+                _FabMenuAction(
+                  label: 'Registrar gasto',
+                  iconPath: AppImages.iconGastos,
+                  onTap: () {
+                    _closeFab();
+                    openExpenseForm(context);
+                  },
+                ),
+                _FabMenuAction(
+                  label: 'Agregar potrero',
+                  iconPath: AppImages.iconPasto,
+                  onTap: () {
+                    _closeFab();
+                    openPaddockForm(context);
+                  },
+                ),
+                _FabMenuAction(
+                  label: 'Mover lote',
+                  iconPath: AppImages.iconCabezaToro,
+                  onTap: () {
+                    _closeFab();
+                    setState(() => index = 1);
+                  },
+                ),
+                _FabMenuAction(
+                  label: 'Registrar animal',
+                  iconPath: AppImages.iconVaca,
+                  onTap: () {
+                    _closeFab();
+                    openAnimalForm(context);
+                  },
+                ),
+              ],
+            ),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.pets_outlined),
-            selectedIcon: Icon(Icons.pets),
-            label: 'Animales',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.grass_outlined),
-            selectedIcon: Icon(Icons.grass),
-            label: 'Potreros',
-          ),
-          NavigationDestination(icon: Icon(Icons.more_horiz), label: 'Más'),
         ],
       ),
     );
   }
 
-  void _quickActions(BuildContext context) => showModalBottomSheet(
-    context: context,
-    showDragHandle: true,
-    builder: (_) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Acciones rápidas',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            ListTile(
-              leading: const Icon(Icons.add_circle_outline),
-              title: const Text('Registrar animal'),
-              onTap: () {
-                Navigator.pop(context);
-                openAnimalForm(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.swap_horiz),
-              title: const Text('Mover un animal'),
-              subtitle: const Text('Elige el animal desde su lista'),
-              onTap: () {
-                Navigator.pop(context);
-                setState(() => index = 1);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.add_location_alt_outlined),
-              title: const Text('Agregar potrero'),
-              onTap: () {
-                Navigator.pop(context);
-                openPaddockForm(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.receipt_long),
-              title: const Text('Registrar gasto'),
-              onTap: () {
-                Navigator.pop(context);
-                openExpenseForm(context);
-              },
-            ),
-          ],
+  void _toggleFab() {
+    setState(() {
+      _isFabOpen = !_isFabOpen;
+    });
+  }
+
+  void _closeFab() {
+    if (!_isFabOpen) return;
+
+    setState(() {
+      _isFabOpen = false;
+    });
+  }
+}
+
+class _ExpandableFabMenu extends StatelessWidget {
+  const _ExpandableFabMenu({
+    required this.isOpen,
+    required this.onToggle,
+    required this.actions,
+  });
+
+  final bool isOpen;
+  final VoidCallback onToggle;
+  final List<_FabMenuAction> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 220),
+          switchInCurve: Curves.easeOutBack,
+          switchOutCurve: Curves.easeIn,
+          child: isOpen
+              ? Column(
+                  key: const ValueKey('fab_actions'),
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: actions
+                      .map(
+                        (action) => Padding(
+                          padding: const EdgeInsets.only(bottom: 14),
+                          child: _FabActionButton(action: action),
+                        ),
+                      )
+                      .toList(),
+                )
+              : const SizedBox(key: ValueKey('fab_empty'), height: 0, width: 0),
         ),
-      ),
-    ),
-  );
+        FloatingActionButton(
+          heroTag: 'main_fab',
+          backgroundColor: AppColors.primaryDark,
+          foregroundColor: Colors.white,
+          elevation: 8,
+          shape: const CircleBorder(),
+          onPressed: onToggle,
+          child: AnimatedRotation(
+            turns: isOpen ? 0.125 : 0,
+            duration: const Duration(milliseconds: 200),
+            child: Icon(isOpen ? Icons.close : Icons.add, size: 34),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FabActionButton extends StatelessWidget {
+  const _FabActionButton({required this.action});
+
+  final _FabMenuAction action;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Material(
+          color: Colors.white,
+          elevation: 5,
+          shadowColor: Colors.black.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(28),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(28),
+            onTap: action.onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Text(
+                action.label,
+                style: const TextStyle(
+                  color: AppColors.text,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        FloatingActionButton.small(
+          heroTag: action.label,
+          backgroundColor: Colors.white,
+          foregroundColor: AppColors.primaryDark,
+          elevation: 6,
+          shape: const CircleBorder(),
+          onPressed: action.onTap,
+          child: action.iconPath != null
+              ? _BrandAssetIcon(path: action.iconPath!, size: 25)
+              : Icon(action.icon ?? Icons.add),
+        ),
+      ],
+    );
+  }
+}
+
+class _FabMenuAction {
+  const _FabMenuAction({
+    required this.label,
+    required this.onTap,
+    this.icon,
+    this.iconPath,
+  });
+
+  final String label;
+  final IconData? icon;
+  final String? iconPath;
+  final VoidCallback onTap;
 }
 
 class DashboardScreen extends ConsumerWidget {
@@ -152,7 +294,10 @@ class DashboardScreen extends ConsumerWidget {
             farmName: farm?.name ?? 'Mi Finca',
             userName: session?.name ?? '',
           ),
-
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            child: ConnectivityBanner(state: sync),
+          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
             child: Column(
@@ -167,12 +312,11 @@ class DashboardScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 14),
-
                 Row(
                   children: [
                     Expanded(
                       child: _Metric(
-                        icon: Icons.pets,
+                        iconPath: AppImages.iconVaca,
                         value: '${animals.length}',
                         label: 'Animales',
                       ),
@@ -180,21 +324,19 @@ class DashboardScreen extends ConsumerWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: _Metric(
-                        icon: Icons.grass,
+                        iconPath: AppImages.iconPasto,
                         value: '$availablePaddocks/${paddocks.length}',
                         label: 'Potreros libres',
                       ),
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 12),
-
                 Row(
                   children: [
                     Expanded(
                       child: _Metric(
-                        icon: Icons.receipt_long,
+                        iconPath: AppImages.iconGastos,
                         value: NumberFormat.compactCurrency(
                           locale: 'es_PE',
                           symbol: 'S/',
@@ -212,9 +354,7 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 22),
-
                 const Text(
                   'Accesos rápidos',
                   style: TextStyle(
@@ -224,12 +364,11 @@ class DashboardScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-
                 Row(
                   children: [
                     Expanded(
                       child: _HomeActionCard(
-                        icon: Icons.add_circle_outline,
+                        iconPath: AppImages.iconVaca,
                         title: 'Registrar',
                         subtitle: 'Nuevo animal',
                         onTap: () => openAnimalForm(context),
@@ -238,7 +377,7 @@ class DashboardScreen extends ConsumerWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: _HomeActionCard(
-                        icon: Icons.add_location_alt_outlined,
+                        iconPath: AppImages.iconPasto,
                         title: 'Potrero',
                         subtitle: 'Crear espacio',
                         onTap: () => openPaddockForm(context),
@@ -246,14 +385,12 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 12),
-
                 Row(
                   children: [
                     Expanded(
                       child: _HomeActionCard(
-                        icon: Icons.swap_horiz,
+                        iconPath: AppImages.iconCabezaToro,
                         title: 'Movimiento',
                         subtitle: 'Mover ganado',
                         onTap: () => Navigator.push(
@@ -267,7 +404,7 @@ class DashboardScreen extends ConsumerWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: _HomeActionCard(
-                        icon: Icons.receipt_long,
+                        iconPath: AppImages.iconGastos,
                         title: 'Gasto',
                         subtitle: 'Registrar costo',
                         onTap: () => openExpenseForm(context),
@@ -275,7 +412,6 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                   ],
                 ),
-
                 if (suggested != null) ...[
                   const SizedBox(height: 22),
                   Card(
@@ -311,9 +447,7 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                   ),
                 ],
-
                 const SizedBox(height: 24),
-
                 const Text(
                   'Registrados recientemente',
                   style: TextStyle(
@@ -322,9 +456,7 @@ class DashboardScreen extends ConsumerWidget {
                     color: AppColors.text,
                   ),
                 ),
-
                 const SizedBox(height: 10),
-
                 if (animals.isEmpty)
                   Card(
                     elevation: 0,
@@ -360,7 +492,6 @@ class DashboardScreen extends ConsumerWidget {
                           ),
                         ),
                       ),
-
                 const SizedBox(height: 100),
               ],
             ),
@@ -377,14 +508,14 @@ class _HomeHero extends StatelessWidget {
   final String farmName;
   final String userName;
 
-  static const String _donFincaPath = 'assets/images/don_finca_welcome.png';
+  static const String _donFincaPath = AppImages.donFincaWelcome;
 
   @override
   Widget build(BuildContext context) {
     final greetingName = userName.trim().isEmpty ? '' : ', $userName';
 
     return Container(
-      height: 315,
+      height: 290,
       decoration: const BoxDecoration(
         color: AppColors.primaryDark,
         borderRadius: BorderRadius.only(
@@ -409,7 +540,15 @@ class _HomeHero extends StatelessWidget {
                       color: Colors.white.withValues(alpha: 0.14),
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: const Icon(Icons.agriculture, color: Colors.white),
+                    child: Image.asset(
+                      AppImages.iconCabezaToro,
+                      width: 28,
+                      height: 28,
+                      fit: BoxFit.contain,
+                      color: Colors.white,
+                      errorBuilder: (_, __, ___) =>
+                          const Icon(Icons.agriculture, color: Colors.white),
+                    ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -424,17 +563,12 @@ class _HomeHero extends StatelessWidget {
                       ),
                     ),
                   ),
-                  IconButton(
-                    onPressed: () {},
-                    icon: const Icon(Icons.menu, color: Colors.white),
-                  ),
                 ],
               ),
             ),
-
             Positioned(
               left: 22,
-              top: 92,
+              top: 80,
               width: 220,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -469,7 +603,6 @@ class _HomeHero extends StatelessWidget {
                 ],
               ),
             ),
-
             Positioned(
               right: -20,
               bottom: -8,
@@ -493,15 +626,58 @@ class _HomeHero extends StatelessWidget {
   }
 }
 
+class _NavAssetIcon extends StatelessWidget {
+  const _NavAssetIcon({required this.path, this.selected = false});
+
+  final String path;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.asset(
+      path,
+      width: selected ? 28 : 25,
+      height: selected ? 28 : 25,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) =>
+          Icon(Icons.image_not_supported_outlined, size: selected ? 28 : 25),
+    );
+  }
+}
+
+class _BrandAssetIcon extends StatelessWidget {
+  const _BrandAssetIcon({required this.path, this.size = 28});
+
+  final String path;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.asset(
+      path,
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => Icon(
+        Icons.image_not_supported_outlined,
+        size: size,
+        color: AppColors.primaryDark,
+      ),
+    );
+  }
+}
+
 class _HomeActionCard extends StatelessWidget {
   const _HomeActionCard({
-    required this.icon,
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.icon,
+    this.iconPath,
   });
 
-  final IconData icon;
+  final IconData? icon;
+  final String? iconPath;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
@@ -520,7 +696,9 @@ class _HomeActionCard extends StatelessWidget {
           children: [
             CircleAvatar(
               backgroundColor: AppColors.primaryLight,
-              child: Icon(icon, color: AppColors.primaryDark),
+              child: iconPath != null
+                  ? _BrandAssetIcon(path: iconPath!, size: 28)
+                  : Icon(icon ?? Icons.circle, color: AppColors.primaryDark),
             ),
             const SizedBox(height: 14),
             Text(
@@ -544,9 +722,18 @@ class _HomeActionCard extends StatelessWidget {
 }
 
 class _Metric extends StatelessWidget {
-  const _Metric({required this.icon, required this.value, required this.label});
-  final IconData icon;
-  final String value, label;
+  const _Metric({
+    required this.value,
+    required this.label,
+    this.icon,
+    this.iconPath,
+  });
+
+  final IconData? icon;
+  final String? iconPath;
+  final String value;
+  final String label;
+
   @override
   Widget build(BuildContext context) => Card(
     child: Padding(
@@ -554,7 +741,10 @@ class _Metric extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: AppColors.primary),
+          if (iconPath != null)
+            _BrandAssetIcon(path: iconPath!, size: 30)
+          else
+            Icon(icon ?? Icons.circle, color: AppColors.primary),
           const SizedBox(height: 8),
           Text(
             value,
@@ -569,6 +759,7 @@ class _Metric extends StatelessWidget {
 
 class MoreScreen extends ConsumerWidget {
   const MoreScreen({super.key});
+
   @override
   Widget build(BuildContext context, WidgetRef ref) => Scaffold(
     appBar: AppBar(title: const Text('Más')),
@@ -606,6 +797,7 @@ class MoreScreen extends ConsumerWidget {
       ],
     ),
   );
+
   Widget _item(
     BuildContext context,
     IconData icon,
@@ -633,43 +825,43 @@ class MoreScreen extends ConsumerWidget {
 
 class IndicatorsScreen extends ConsumerWidget {
   const IndicatorsScreen({super.key});
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final animals = ref.watch(animalViewModelProvider).requireValue.animals;
     final paddocks = ref.watch(paddockViewModelProvider).requireValue;
     final monthlyTotal = ref.watch(monthlyExpenseTotalProvider);
     final sync = ref.watch(syncViewModelProvider).requireValue;
+
     final avg = animals.where((a) => a.weight != null).toList();
     final average = avg.isEmpty
         ? 0
         : avg.fold<double>(0, (s, a) => s + a.weight!) / avg.length;
+
     final values = [
-      ('Animales', '${animals.length}', Icons.pets),
+      ('Animales', '${animals.length}', AppImages.iconVaca),
       (
         'Costos del mes',
         NumberFormat.compactCurrency(
           locale: 'es_PE',
           symbol: 'S/',
         ).format(monthlyTotal),
-        Icons.payments,
+        AppImages.iconGastos,
       ),
       (
         'Potreros libres',
         '${paddocks.where((p) => p.status == 'Disponible').length}',
-        Icons.grass,
+        AppImages.iconPasto,
       ),
       (
         'Animales enfermos',
         '${animals.where((a) => a.status == 'Enfermo').length}',
-        Icons.health_and_safety,
+        AppImages.iconVacuna,
       ),
-      (
-        'Peso promedio',
-        '${average.toStringAsFixed(0)} kg',
-        Icons.monitor_weight,
-      ),
-      ('Cambios pendientes', '${sync.pendingChanges}', Icons.cloud_upload),
+      ('Peso promedio', '${average.toStringAsFixed(0)} kg', AppImages.iconToro),
+      ('Cambios pendientes', '${sync.pendingChanges}', null),
     ];
+
     return Scaffold(
       appBar: AppBar(title: const Text('Indicadores')),
       body: GridView.count(
@@ -679,7 +871,14 @@ class IndicatorsScreen extends ConsumerWidget {
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
         children: values
-            .map((v) => _Metric(icon: v.$3, value: v.$2, label: v.$1))
+            .map(
+              (v) => _Metric(
+                iconPath: v.$3,
+                icon: v.$3 == null ? Icons.cloud_upload : null,
+                value: v.$2,
+                label: v.$1,
+              ),
+            )
             .toList(),
       ),
     );
@@ -688,9 +887,11 @@ class IndicatorsScreen extends ConsumerWidget {
 
 class SyncScreen extends ConsumerWidget {
   const SyncScreen({super.key});
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final d = ref.watch(syncViewModelProvider).requireValue;
+
     final icon = !d.isOnline
         ? Icons.cloud_off
         : d.isSyncing
@@ -698,6 +899,7 @@ class SyncScreen extends ConsumerWidget {
         : d.pendingChanges > 0
         ? Icons.cloud_upload
         : Icons.cloud_done;
+
     final title = !d.isOnline
         ? 'Sin conexión'
         : d.isSyncing
@@ -705,6 +907,7 @@ class SyncScreen extends ConsumerWidget {
         : d.pendingChanges > 0
         ? '${d.pendingChanges} cambios pendientes'
         : 'Todo sincronizado';
+
     return Scaffold(
       appBar: AppBar(title: const Text('Sincronización')),
       body: Padding(
@@ -758,10 +961,12 @@ class SyncScreen extends ConsumerWidget {
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(authViewModelProvider).requireValue;
     final farm = ref.watch(farmViewModelProvider).requireValue;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Perfil y ajustes')),
       body: ListView(
