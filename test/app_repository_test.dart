@@ -2,8 +2,10 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mi_finca_app/core/database/app_database.dart';
 import 'package:mi_finca_app/features/animals/data/datasources/animal_local_datasource.dart';
+import 'package:mi_finca_app/features/animals/data/datasources/animal_remote_datasource.dart';
 import 'package:mi_finca_app/features/animals/data/repositories/animal_repository_impl.dart';
 import 'package:mi_finca_app/features/animals/domain/entities/animal.dart';
+import 'package:mi_finca_app/features/animals/domain/entities/movement.dart';
 import 'package:mi_finca_app/features/auth/data/datasources/auth_local_datasource.dart';
 import 'package:mi_finca_app/features/auth/data/datasources/supabase_auth_datasource.dart';
 import 'package:mi_finca_app/features/auth/data/repositories/auth_repository_impl.dart';
@@ -36,7 +38,11 @@ void main() {
       remote: SupabaseAuthDatasource(testSupabaseClient),
     );
 
-    animalRepository = AnimalRepositoryImpl(AnimalLocalDataSource(database));
+    animalRepository = AnimalRepositoryImpl(
+      local: AnimalLocalDataSource(database),
+      remote: _FakeAnimalRemoteDataSource(testSupabaseClient),
+    );
+
     expenseRepository = ExpenseRepositoryImpl(ExpenseLocalDataSource(database));
 
     syncRepository = SyncRepositoryImpl(
@@ -87,4 +93,20 @@ void main() {
     expect(await syncRepository.pendingCount(), 0);
     expect(await syncRepository.lastSync(), isNotNull);
   });
+}
+
+class _FakeAnimalRemoteDataSource extends AnimalRemoteDataSource {
+  const _FakeAnimalRemoteDataSource(super.client);
+
+  @override
+  Future<void> upsertAnimal(Animal animal) async {}
+
+  @override
+  Future<void> upsertMovement(Movement movement) async {}
+
+  @override
+  Future<List<Animal>> getAnimals() async => [];
+
+  @override
+  Future<List<Movement>> getMovements() async => [];
 }

@@ -416,7 +416,7 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
               ),
               const SizedBox(height: 14),
               DropdownButtonFormField<String>(
-              value: paddockId,
+                value: paddockId,
                 decoration: const InputDecoration(labelText: 'Potrero actual'),
                 items: paddocks
                     .map(
@@ -617,12 +617,25 @@ class MoveAnimalScreen extends ConsumerStatefulWidget {
 class _MoveAnimalScreenState extends ConsumerState<MoveAnimalScreen> {
   String? destination;
   DateTime date = DateTime.now();
+
   @override
   Widget build(BuildContext context) {
     final animals = ref.watch(animalViewModelProvider).requireValue.animals;
     final paddocks = ref.watch(paddockViewModelProvider).requireValue;
+
     final animal = animals.firstWhere((a) => a.id == widget.animalId);
-    final options = paddocks.where((p) => p.id != animal.paddockId).toList();
+
+    final uniquePaddocks = {
+      for (final paddock in paddocks) paddock.id: paddock,
+    }.values.toList();
+
+    final options = uniquePaddocks
+        .where((paddock) => paddock.id != animal.paddockId)
+        .toList();
+
+    final safeDestination =
+        options.any((paddock) => paddock.id == destination) ? destination : null;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Mover de potrero')),
       body: ListView(
@@ -634,12 +647,19 @@ class _MoveAnimalScreenState extends ConsumerState<MoveAnimalScreen> {
           ),
           const SizedBox(height: 20),
           DropdownButtonFormField<String>(
-            value: destination,
+            value: safeDestination,
             decoration: const InputDecoration(labelText: 'Potrero destino'),
             items: options
-                .map((p) => DropdownMenuItem(value: p.id, child: Text(p.name)))
+                .map(
+                  (paddock) => DropdownMenuItem<String>(
+                    value: paddock.id,
+                    child: Text(paddock.name),
+                  ),
+                )
                 .toList(),
-            onChanged: (v) => setState(() => destination = v),
+            onChanged: (value) {
+              setState(() => destination = value);
+            },
           ),
           const SizedBox(height: 14),
           ListTile(
@@ -651,23 +671,27 @@ class _MoveAnimalScreenState extends ConsumerState<MoveAnimalScreen> {
             subtitle: Text('${date.day}/${date.month}/${date.year}'),
             trailing: const Icon(Icons.calendar_month),
             onTap: () async {
-              final d = await showDatePicker(
+              final selectedDate = await showDatePicker(
                 context: context,
                 firstDate: DateTime(2020),
                 lastDate: DateTime.now(),
                 initialDate: date,
               );
-              if (d != null) setState(() => date = d);
+
+              if (selectedDate != null) {
+                setState(() => date = selectedDate);
+              }
             },
           ),
           const SizedBox(height: 24),
           FilledButton(
-            onPressed: destination == null
+            onPressed: safeDestination == null
                 ? null
                 : () async {
                     await ref
                         .read(animalViewModelProvider.notifier)
-                        .move(animal, destination!, date);
+                        .move(animal, safeDestination, date);
+
                     if (context.mounted) {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
