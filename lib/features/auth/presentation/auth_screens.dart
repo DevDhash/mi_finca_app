@@ -1,21 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mi_finca_app/app/theme/app_theme.dart';
+import 'package:mi_finca_app/core/constants/app_images.dart';
 import 'package:mi_finca_app/features/auth/presentation/viewmodels/auth_view_model.dart';
 import 'package:mi_finca_app/features/onboarding/presentation/viewmodels/onboarding_view_model.dart';
 
 class AuthScreen extends ConsumerStatefulWidget {
   const AuthScreen({super.key});
+
   @override
   ConsumerState<AuthScreen> createState() => _AuthScreenState();
 }
 
 class _AuthScreenState extends ConsumerState<AuthScreen> {
+  final _formKey = GlobalKey<FormState>();
+
   final email = TextEditingController();
   final password = TextEditingController();
   final name = TextEditingController();
+
   bool create = false;
   bool busy = false;
+  bool obscurePassword = true;
   String? error;
 
   @override
@@ -27,147 +33,523 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   }
 
   Future<void> submit() async {
-    setState(() {
-      busy = true;
-      error = null;
-    });
-    try {
-      await ref
-          .read(authViewModelProvider.notifier)
-          .login(
-            email: email.text,
-            password: password.text,
-            name: create ? name.text : null,
-          );
-    } on FormatException catch (e) {
-      setState(() => error = e.message);
-    } finally {
-      if (mounted) setState(() => busy = false);
+  if (!_formKey.currentState!.validate()) return;
+
+  FocusScope.of(context).unfocus();
+
+  setState(() {
+    busy = true;
+    error = null;
+  });
+
+  try {
+    final authNotifier = ref.read(authViewModelProvider.notifier);
+
+    if (create) {
+      await authNotifier.signUp(
+        email: email.text.trim(),
+        password: password.text.trim(),
+        name: name.text.trim(),
+      );
+    } else {
+      await authNotifier.login(
+        email: email.text.trim(),
+        password: password.text.trim(),
+      );
     }
+  } on FormatException catch (e) {
+    if (mounted) {
+      setState(() => error = e.message);
+      _showError(e.message);
+    }
+  } catch (e) {
+    final message = _friendlyAuthMessage(e);
+
+    if (mounted) {
+      setState(() => error = message);
+      _showError(message);
+    }
+  } finally {
+    if (mounted) {
+      setState(() => busy = false);
+    }
+  }
+}
+
+  void _toggleMode() {
+    setState(() {
+      create = !create;
+      error = null;
+      password.clear();
+
+      if (!create) {
+        name.clear();
+      }
+    });
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: AppColors.danger,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
+  String _friendlyAuthMessage(Object? error) {
+    final rawMessage = error.toString();
+    final message = rawMessage.toLowerCase();
+
+    if (message.contains('invalid login credentials') ||
+        message.contains('invalid credentials') ||
+        message.contains('correo o contraseña incorrectos')) {
+      return 'Correo o contraseña incorrectos.';
+    }
+
+    if (message.contains('email not confirmed')) {
+      return 'Debes confirmar tu correo antes de iniciar sesión.';
+    }
+
+    if (message.contains('user already registered') ||
+        message.contains('already registered')) {
+      return 'Este correo ya está registrado. Inicia sesión.';
+    }
+
+    if (message.contains('socketexception') ||
+        message.contains('clientexception') ||
+        message.contains('failed host lookup') ||
+        message.contains('network is unreachable') ||
+        message.contains('connection timed out') ||
+        message.contains('connection refused')) {
+      return 'No se pudo conectar con el servidor. Verifica tu internet e intenta nuevamente.';
+    }
+
+    if (message.contains('timeout')) {
+      return 'El servidor tardó demasiado en responder. Intenta nuevamente.';
+    }
+
+    final cleanMessage = rawMessage
+        .replaceFirst('Exception: ', '')
+        .replaceFirst('AuthException(message: ', '')
+        .replaceFirst(', statusCode: null, code: null)', '')
+        .trim();
+
+    if (cleanMessage.isEmpty) {
+      return 'Ocurrió un error inesperado. Intenta nuevamente.';
+    }
+
+    return cleanMessage;
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: SafeArea(
-      child: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 460),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const CircleAvatar(
-                  radius: 38,
-                  backgroundColor: AppColors.primaryLight,
-                  child: Icon(
-                    Icons.grass,
-                    size: 42,
-                    color: AppColors.primaryDark,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  create ? 'Crea tu cuenta' : 'Bienvenido a Mi Finca',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Tus datos quedan guardados en este dispositivo, incluso sin señal.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16, color: AppColors.muted),
-                ),
-                const SizedBox(height: 28),
-                if (create) ...[
-                  TextField(
-                    controller: name,
-                    textInputAction: TextInputAction.next,
-                    decoration: const InputDecoration(labelText: 'Tu nombre'),
-                  ),
-                  const SizedBox(height: 14),
-                ],
-                TextField(
-                  controller: email,
-                  keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    labelText: 'Correo electrónico',
-                  ),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: password,
-                  obscureText: true,
-                  onSubmitted: (_) => submit(),
-                  decoration: const InputDecoration(labelText: 'Clave'),
-                ),
-                if (error != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Text(
-                      error!,
-                      style: const TextStyle(color: AppColors.danger),
-                    ),
-                  ),
-                const SizedBox(height: 20),
-                FilledButton(
-                  onPressed: busy ? null : submit,
-                  child: Text(create ? 'Crear cuenta' : 'Iniciar sesión'),
-                ),
-                TextButton(
-                  onPressed: busy
-                      ? null
-                      : () => setState(() {
-                          create = !create;
-                          error = null;
-                        }),
-                  child: Text(
-                    create ? 'Ya tengo una cuenta' : 'Crear una cuenta',
-                  ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Row(
-                    children: [
-                      Expanded(child: Divider()),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 12),
-                        child: Text('o'),
-                      ),
-                      Expanded(child: Divider()),
-                    ],
-                  ),
-                ),
-                OutlinedButton.icon(
-                  onPressed: busy
-                      ? null
-                      : () => ref
-                            .read(onboardingViewModelProvider.notifier)
-                            .loadDemo(),
-                  icon: const Icon(Icons.visibility_outlined),
-                  label: const Text('Entrar con datos de demostración'),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'MVP: el acceso es local y acepta cualquier correo con una clave de 4 caracteres. Sustituye MockRemoteGateway al integrar tu API.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14, color: AppColors.muted),
-                ),
+  Widget build(BuildContext context) {
+    final title = create ? 'Crea tu cuenta' : 'Bienvenido a Mi Finca';
+    final subtitle = create
+        ? 'Registra tu acceso para gestionar tu finca desde cualquier lugar.'
+        : 'Ingresa con tu correo y contraseña para continuar.';
+
+    return Scaffold(
+      backgroundColor: AppColors.primaryDark,
+      body: SafeArea(
+        child: Container(
+          width: double.infinity,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              stops: [0.0, 0.42, 0.72, 1.0],
+              colors: [
+                Colors.white,
+                AppColors.primaryLight,
+                AppColors.primary,
+                AppColors.primaryDark,
               ],
+            ),
+          ),
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 460),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _LogoHeader(title: title, subtitle: subtitle),
+                    const SizedBox(height: 24),
+                    Form(
+                      key: _formKey,
+                      child: _AuthPanel(
+                        create: create,
+                        busy: busy,
+                        error: error,
+                        obscurePassword: obscurePassword,
+                        name: name,
+                        email: email,
+                        password: password,
+                        onSubmit: submit,
+                        onTogglePassword: () {
+                          setState(() => obscurePassword = !obscurePassword);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    TextButton(
+                      onPressed: busy ? null : _toggleMode,
+                      child: Text(
+                        create
+                            ? 'Ya tengo una cuenta'
+                            : 'Crear una cuenta nueva',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Conecta · Protege · Gestiona',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.88),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
+}
+
+class _LogoHeader extends StatelessWidget {
+  const _LogoHeader({
+    required this.title,
+    required this.subtitle,
+  });
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          width: 104,
+          height: 104,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.86),
+            borderRadius: BorderRadius.circular(32),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 18,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(22),
+            child: Image.asset(
+              AppImages.iconCabezaToro,
+              fit: BoxFit.contain,
+              color: AppColors.primaryDark,
+              errorBuilder: (_, __, ___) => const Icon(
+                Icons.agriculture,
+                size: 44,
+                color: AppColors.primaryDark,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 22),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: AppColors.primaryDark,
+            fontSize: 30,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.5,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          subtitle,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: AppColors.primaryDark.withValues(alpha: 0.78),
+            fontSize: 16,
+            height: 1.35,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AuthPanel extends StatelessWidget {
+  const _AuthPanel({
+    required this.create,
+    required this.busy,
+    required this.error,
+    required this.obscurePassword,
+    required this.name,
+    required this.email,
+    required this.password,
+    required this.onSubmit,
+    required this.onTogglePassword,
+  });
+
+  final bool create;
+  final bool busy;
+  final String? error;
+  final bool obscurePassword;
+  final TextEditingController name;
+  final TextEditingController email;
+  final TextEditingController password;
+  final VoidCallback onSubmit;
+  final VoidCallback onTogglePassword;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.14),
+            blurRadius: 24,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          if (create) ...[
+            TextFormField(
+              controller: name,
+              textInputAction: TextInputAction.next,
+              textCapitalization: TextCapitalization.words,
+              decoration: _inputDecoration(
+                label: 'Nombre',
+                icon: Icons.person_outline,
+              ),
+              validator: (value) {
+                if (!create) return null;
+
+                if (value == null || value.trim().isEmpty) {
+                  return 'Ingresa tu nombre.';
+                }
+
+                if (value.trim().length < 2) {
+                  return 'Ingresa un nombre válido.';
+                }
+
+                return null;
+              },
+            ),
+            const SizedBox(height: 14),
+          ],
+          TextFormField(
+            controller: email,
+            keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next,
+            autofillHints: const [AutofillHints.email],
+            decoration: _inputDecoration(
+              label: 'Correo electrónico',
+              icon: Icons.email_outlined,
+            ),
+            validator: (value) {
+              final cleanValue = value?.trim() ?? '';
+
+              if (cleanValue.isEmpty) {
+                return 'Ingresa tu correo electrónico.';
+              }
+
+              final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+$');
+
+              if (!emailRegex.hasMatch(cleanValue)) {
+                return 'Ingresa un correo válido.';
+              }
+
+              return null;
+            },
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: password,
+            obscureText: obscurePassword,
+            textInputAction: TextInputAction.done,
+            autofillHints: const [AutofillHints.password],
+            onFieldSubmitted: (_) {
+              if (!busy) onSubmit();
+            },
+            decoration: _inputDecoration(
+              label: 'Contraseña',
+              icon: Icons.lock_outline,
+            ).copyWith(
+              suffixIcon: IconButton(
+                onPressed: busy ? null : onTogglePassword,
+                icon: Icon(
+                  obscurePassword
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
+                  color: AppColors.primaryDark.withValues(alpha: 0.64),
+                ),
+              ),
+            ),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Ingresa tu contraseña.';
+              }
+
+              if (value.length < 6) {
+                return 'La contraseña debe tener al menos 6 caracteres.';
+              }
+
+              return null;
+            },
+          ),
+          if (error != null) ...[
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.danger.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: AppColors.danger.withValues(alpha: 0.26),
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    color: AppColors.danger,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      error!,
+                      style: const TextStyle(
+                        color: AppColors.danger,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 22),
+          SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: FilledButton(
+              onPressed: busy ? null : onSubmit,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primaryDark,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor:
+                    AppColors.primaryDark.withValues(alpha: 0.55),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                elevation: 0,
+              ),
+              child: busy
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(
+                      create ? 'Crear cuenta' : 'Iniciar sesión',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  InputDecoration _inputDecoration({
+    required String label,
+    required IconData icon,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon),
+      filled: true,
+      fillColor: AppColors.primaryLight.withValues(alpha: 0.34),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      labelStyle: TextStyle(
+        color: AppColors.primaryDark.withValues(alpha: 0.72),
+        fontWeight: FontWeight.w600,
+      ),
+      prefixIconColor: AppColors.primaryDark.withValues(alpha: 0.72),
+      errorStyle: const TextStyle(
+        color: AppColors.danger,
+        fontWeight: FontWeight.w600,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide(
+          color: AppColors.primaryDark.withValues(alpha: 0.18),
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(
+          color: AppColors.primaryDark,
+          width: 1.5,
+        ),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(
+          color: AppColors.danger,
+          width: 1.1,
+        ),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(
+          color: AppColors.danger,
+          width: 1.5,
+        ),
+      ),
+    );
+  }
 }
 
 class FarmSetupScreen extends ConsumerStatefulWidget {
   const FarmSetupScreen({super.key});
+
   @override
   ConsumerState<FarmSetupScreen> createState() => _FarmSetupScreenState();
 }
@@ -176,7 +558,8 @@ class _FarmSetupScreenState extends ConsumerState<FarmSetupScreen> {
   final name = TextEditingController();
   final location = TextEditingController();
   final paddock = TextEditingController();
-  final key = GlobalKey<FormState>();
+  final formKey = GlobalKey<FormState>();
+
   @override
   void dispose() {
     name.dispose();
@@ -187,57 +570,60 @@ class _FarmSetupScreenState extends ConsumerState<FarmSetupScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Configura tu finca')),
-    body: Form(
-      key: key,
-      child: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          const Icon(Icons.landscape, size: 72, color: AppColors.primary),
-          const SizedBox(height: 16),
-          const Text(
-            'Empecemos por lo esencial',
-            style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+        appBar: AppBar(title: const Text('Configura tu finca')),
+        body: Form(
+          key: formKey,
+          child: ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              const Icon(Icons.landscape, size: 72, color: AppColors.primary),
+              const SizedBox(height: 16),
+              const Text(
+                'Empecemos por lo esencial',
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Podrás cambiar estos datos más adelante.',
+                style: TextStyle(fontSize: 16, color: AppColors.muted),
+              ),
+              const SizedBox(height: 24),
+              TextFormField(
+                controller: name,
+                decoration:
+                    const InputDecoration(labelText: 'Nombre de la finca'),
+                validator: required,
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: location,
+                decoration: const InputDecoration(labelText: 'Ubicación'),
+                validator: required,
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: paddock,
+                decoration: const InputDecoration(
+                  labelText: 'Nombre del primer potrero',
+                  hintText: 'Ejemplo: Potrero Norte',
+                ),
+              ),
+              const SizedBox(height: 24),
+              FilledButton(
+                onPressed: () async {
+                  if (!formKey.currentState!.validate()) return;
+
+                  await ref
+                      .read(onboardingViewModelProvider.notifier)
+                      .configure(name.text, location.text, paddock.text);
+                },
+                child: const Text('Guardar y comenzar'),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          const Text(
-            'Podrás cambiar estos datos más adelante.',
-            style: TextStyle(fontSize: 16, color: AppColors.muted),
-          ),
-          const SizedBox(height: 24),
-          TextFormField(
-            controller: name,
-            decoration: const InputDecoration(labelText: 'Nombre de la finca'),
-            validator: required,
-          ),
-          const SizedBox(height: 14),
-          TextFormField(
-            controller: location,
-            decoration: const InputDecoration(labelText: 'Ubicación'),
-            validator: required,
-          ),
-          const SizedBox(height: 14),
-          TextFormField(
-            controller: paddock,
-            decoration: const InputDecoration(
-              labelText: 'Nombre del primer potrero',
-              hintText: 'Ejemplo: Potrero Norte',
-            ),
-          ),
-          const SizedBox(height: 24),
-          FilledButton(
-            onPressed: () async {
-              if (!key.currentState!.validate()) return;
-              await ref
-                  .read(onboardingViewModelProvider.notifier)
-                  .configure(name.text, location.text, paddock.text);
-            },
-            child: const Text('Guardar y comenzar'),
-          ),
-        ],
-      ),
-    ),
-  );
+        ),
+      );
+
   String? required(String? value) =>
       value == null || value.trim().isEmpty ? 'Este dato es necesario' : null;
 }

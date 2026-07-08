@@ -241,9 +241,7 @@ class _FabActionButton extends StatelessWidget {
           elevation: 6,
           shape: const CircleBorder(),
           onPressed: action.onTap,
-          child: action.iconPath != null
-              ? _BrandAssetIcon(path: action.iconPath!, size: 25)
-              : Icon(action.icon ?? Icons.add),
+          child: _BrandAssetIcon(path: action.iconPath, size: 25),
         ),
       ],
     );
@@ -253,14 +251,11 @@ class _FabActionButton extends StatelessWidget {
 class _FabMenuAction {
   const _FabMenuAction({
     required this.label,
+    required this.iconPath,
     required this.onTap,
-    this.icon,
-    this.iconPath,
   });
-
   final String label;
-  final IconData? icon;
-  final String? iconPath;
+  final String iconPath;
   final VoidCallback onTap;
 }
 
@@ -669,15 +664,12 @@ class _BrandAssetIcon extends StatelessWidget {
 
 class _HomeActionCard extends StatelessWidget {
   const _HomeActionCard({
+    required this.iconPath,
     required this.title,
     required this.subtitle,
     required this.onTap,
-    this.icon,
-    this.iconPath,
   });
-
-  final IconData? icon;
-  final String? iconPath;
+  final String iconPath;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
@@ -696,9 +688,7 @@ class _HomeActionCard extends StatelessWidget {
           children: [
             CircleAvatar(
               backgroundColor: AppColors.primaryLight,
-              child: iconPath != null
-                  ? _BrandAssetIcon(path: iconPath!, size: 28)
-                  : Icon(icon ?? Icons.circle, color: AppColors.primaryDark),
+              child: _BrandAssetIcon(path: iconPath, size: 28),
             ),
             const SizedBox(height: 14),
             Text(

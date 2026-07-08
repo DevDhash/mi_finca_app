@@ -5,6 +5,7 @@ import 'package:mi_finca_app/features/animals/data/datasources/animal_local_data
 import 'package:mi_finca_app/features/animals/data/repositories/animal_repository_impl.dart';
 import 'package:mi_finca_app/features/animals/domain/entities/animal.dart';
 import 'package:mi_finca_app/features/auth/data/datasources/auth_local_datasource.dart';
+import 'package:mi_finca_app/features/auth/data/datasources/supabase_auth_datasource.dart';
 import 'package:mi_finca_app/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:mi_finca_app/features/auth/domain/entities/user_session.dart';
 import 'package:mi_finca_app/features/expenses/data/datasources/expense_local_datasource.dart';
@@ -13,6 +14,7 @@ import 'package:mi_finca_app/features/expenses/domain/entities/expense.dart';
 import 'package:mi_finca_app/features/sync/data/datasources/mock_sync_remote_datasource.dart';
 import 'package:mi_finca_app/features/sync/data/datasources/sync_local_datasource.dart';
 import 'package:mi_finca_app/features/sync/data/repositories/sync_repository_impl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   late AppDatabase database;
@@ -23,9 +25,20 @@ void main() {
 
   setUp(() {
     database = AppDatabase(NativeDatabase.memory());
-    authRepository = AuthRepositoryImpl(AuthLocalDataSource(database));
+
+    final testSupabaseClient = SupabaseClient(
+      'https://test.supabase.co',
+      'test-publishable-key',
+    );
+
+    authRepository = AuthRepositoryImpl(
+      local: AuthLocalDataSource(database),
+      remote: SupabaseAuthDatasource(testSupabaseClient),
+    );
+
     animalRepository = AnimalRepositoryImpl(AnimalLocalDataSource(database));
     expenseRepository = ExpenseRepositoryImpl(ExpenseLocalDataSource(database));
+
     syncRepository = SyncRepositoryImpl(
       SyncLocalDataSource(database),
       const MockSyncRemoteDataSource(),
@@ -37,6 +50,7 @@ void main() {
   test('persists a session and animal locally', () async {
     const session = UserSession(id: 'u1', name: 'Ana', email: 'ana@test.pe');
     final now = DateTime(2026, 6, 19);
+
     final animal = Animal(
       id: 'a1',
       code: 'V-001',
@@ -57,6 +71,7 @@ void main() {
 
   test('marks the local outbox as synchronized', () async {
     final now = DateTime(2026, 6, 19);
+
     await expenseRepository.save(
       Expense(
         id: 'e1',
