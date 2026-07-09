@@ -11,6 +11,7 @@ import 'package:mi_finca_app/features/auth/data/datasources/supabase_auth_dataso
 import 'package:mi_finca_app/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:mi_finca_app/features/auth/domain/entities/user_session.dart';
 import 'package:mi_finca_app/features/expenses/data/datasources/expense_local_datasource.dart';
+import 'package:mi_finca_app/features/expenses/data/datasources/expense_remote_datasource.dart';
 import 'package:mi_finca_app/features/expenses/data/repositories/expense_repository_impl.dart';
 import 'package:mi_finca_app/features/expenses/domain/entities/expense.dart';
 import 'package:mi_finca_app/features/sync/data/datasources/mock_sync_remote_datasource.dart';
@@ -43,7 +44,10 @@ void main() {
       remote: _FakeAnimalRemoteDataSource(testSupabaseClient),
     );
 
-    expenseRepository = ExpenseRepositoryImpl(ExpenseLocalDataSource(database));
+    expenseRepository = ExpenseRepositoryImpl(
+      local: ExpenseLocalDataSource(database),
+      remote: ExpenseRemoteDataSource(testSupabaseClient),
+    );
 
     syncRepository = SyncRepositoryImpl(
       SyncLocalDataSource(database),

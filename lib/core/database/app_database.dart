@@ -46,10 +46,35 @@ final class AppDatabase extends GeneratedDatabase {
       'SELECT payload FROM records WHERE collection = ? ORDER BY updated_at DESC',
       variables: [Variable.withString(collection)],
     ).get();
+
     return rows
         .map(
           (row) => Map<String, Object?>.from(
             jsonDecode(row.read<String>('payload')) as Map,
+          ),
+        )
+        .toList();
+  }
+
+  Future<List<PendingRecord>> readPendingRecords() async {
+    final rows = await customSelect('''
+      SELECT collection, id, payload, updated_at
+      FROM records
+      WHERE pending = 1
+      ORDER BY updated_at ASC
+      ''').get();
+
+    return rows
+        .map(
+          (row) => PendingRecord(
+            collection: row.read<String>('collection'),
+            id: row.read<String>('id'),
+            payload: Map<String, Object?>.from(
+              jsonDecode(row.read<String>('payload')) as Map,
+            ),
+            updatedAt: DateTime.fromMillisecondsSinceEpoch(
+              row.read<int>('updated_at'),
+            ),
           ),
         )
         .toList();
@@ -73,6 +98,7 @@ final class AppDatabase extends GeneratedDatabase {
         pending ? 1 : 0,
       ],
     );
+
     _recordChanges.add(null);
   }
 
@@ -81,6 +107,7 @@ final class AppDatabase extends GeneratedDatabase {
       'DELETE FROM records WHERE collection = ? AND id = ?',
       [collection, id],
     );
+
     _recordChanges.add(null);
   }
 
@@ -88,7 +115,21 @@ final class AppDatabase extends GeneratedDatabase {
     final row = await customSelect(
       'SELECT COUNT(*) AS count FROM records WHERE pending = 1',
     ).getSingle();
+
     return row.read<int>('count');
+  }
+
+  Future<void> markRecordSynced(String collection, String id) async {
+    await customStatement(
+      '''
+      UPDATE records
+      SET pending = 0
+      WHERE collection = ? AND id = ?
+      ''',
+      [collection, id],
+    );
+
+    _recordChanges.add(null);
   }
 
   Future<void> markAllSynced() async {
@@ -101,6 +142,7 @@ final class AppDatabase extends GeneratedDatabase {
       'SELECT value FROM settings WHERE key = ?',
       variables: [Variable.withString(key)],
     ).getSingleOrNull();
+
     return row?.read<String>('value');
   }
 
@@ -117,6 +159,7 @@ final class AppDatabase extends GeneratedDatabase {
       await customStatement('DELETE FROM records');
       await customStatement('DELETE FROM settings');
     });
+
     _recordChanges.add(null);
   }
 
@@ -125,4 +168,18 @@ final class AppDatabase extends GeneratedDatabase {
     await _recordChanges.close();
     await super.close();
   }
+}
+
+class PendingRecord {
+  const PendingRecord({
+    required this.collection,
+    required this.id,
+    required this.payload,
+    required this.updatedAt,
+  });
+
+  final String collection;
+  final String id;
+  final Map<String, Object?> payload;
+  final DateTime updatedAt;
 }

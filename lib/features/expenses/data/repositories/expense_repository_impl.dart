@@ -1,12 +1,68 @@
-import 'package:mi_finca_app/features/expenses/domain/entities/expense.dart';
+import 'package:mi_finca_app/core/domain/sync_status.dart';
 import 'package:mi_finca_app/features/expenses/data/datasources/expense_local_datasource.dart';
+import 'package:mi_finca_app/features/expenses/data/datasources/expense_remote_datasource.dart';
+import 'package:mi_finca_app/features/expenses/domain/entities/expense.dart';
 import 'package:mi_finca_app/features/expenses/domain/repositories/expense_repository.dart';
 
 class ExpenseRepositoryImpl implements ExpenseRepository {
-  const ExpenseRepositoryImpl(this._local);
+  const ExpenseRepositoryImpl({
+    required ExpenseLocalDataSource local,
+    required ExpenseRemoteDataSource remote,
+  }) : _local = local,
+       _remote = remote;
+
   final ExpenseLocalDataSource _local;
+  final ExpenseRemoteDataSource _remote;
+
   @override
-  Future<List<Expense>> getAll() => _local.getAll();
+  Future<List<Expense>> getAll() async {
+    final localItems = await _local.getAll();
+
+    if (localItems.isNotEmpty) {
+      for (final expense in localItems) {
+        try {
+          await _remote.upsert(expense);
+        } catch (_) {
+          // Offline-first:
+          // Si falla Supabase, seguimos usando gastos locales.
+        }
+      }
+
+      return localItems;
+    }
+
+    try {
+      final remoteItems = await _remote.getAll();
+
+      for (final expense in remoteItems) {
+        await _local.save(expense);
+      }
+
+      return remoteItems;
+    } catch (_) {
+      return localItems;
+    }
+  }
+
   @override
-  Future<void> save(Expense expense) => _local.save(expense);
+  Future<void> save(Expense expense) async {
+    await _local.save(expense);
+
+    try {
+      await _remote.upsert(
+        Expense(
+          id: expense.id,
+          category: expense.category,
+          amount: expense.amount,
+          date: expense.date,
+          note: expense.note,
+          updatedAt: expense.updatedAt,
+          syncStatus: SyncStatus.synced,
+        ),
+      );
+    } catch (_) {
+      // Offline-first:
+      // Si falla Supabase, queda guardado localmente como pendiente.
+    }
+  }
 }
