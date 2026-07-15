@@ -23,9 +23,10 @@ class AnimalRepositoryImpl implements AnimalRepository {
       for (final animal in localItems) {
         try {
           await _remote.upsertAnimal(animal);
+          await _local.markAnimalSynced(animal.id);
         } catch (_) {
           // Offline-first:
-          // Si falla Supabase, seguimos usando la data local.
+          // Si falla Supabase, el animal queda pending = 1.
         }
       }
 
@@ -36,7 +37,10 @@ class AnimalRepositoryImpl implements AnimalRepository {
       final remoteItems = await _remote.getAnimals();
 
       for (final animal in remoteItems) {
-        await _local.save(animal);
+        await _local.save(
+          animal.copyWith(syncStatus: SyncStatus.synced),
+          pending: false,
+        );
       }
 
       return remoteItems;
@@ -53,9 +57,10 @@ class AnimalRepositoryImpl implements AnimalRepository {
       for (final movement in localItems) {
         try {
           await _remote.upsertMovement(movement);
+          await _local.markMovementSynced(movement.id);
         } catch (_) {
           // Offline-first:
-          // Si falla Supabase, seguimos usando movimientos locales.
+          // Si falla Supabase, el movimiento queda pending = 1.
         }
       }
 
@@ -66,7 +71,7 @@ class AnimalRepositoryImpl implements AnimalRepository {
       final remoteItems = await _remote.getMovements();
 
       for (final movement in remoteItems) {
-        await _local.saveMovement(movement);
+        await _local.saveMovement(movement, pending: false);
       }
 
       return remoteItems;
@@ -83,9 +88,11 @@ class AnimalRepositoryImpl implements AnimalRepository {
       await _remote.upsertAnimal(
         animal.copyWith(syncStatus: SyncStatus.synced),
       );
+
+      await _local.markAnimalSynced(animal.id);
     } catch (_) {
       // Offline-first:
-      // Si falla Supabase, queda guardado localmente como pendiente.
+      // Si falla Supabase, queda pending = 1 para reintentar luego.
     }
   }
 
@@ -95,9 +102,10 @@ class AnimalRepositoryImpl implements AnimalRepository {
 
     try {
       await _remote.upsertMovement(movement);
+      await _local.markMovementSynced(movement.id);
     } catch (_) {
       // Offline-first:
-      // Si falla Supabase, queda guardado localmente.
+      // Si falla Supabase, queda pending = 1 para reintentar luego.
     }
   }
 }

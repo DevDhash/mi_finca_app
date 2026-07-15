@@ -4,14 +4,24 @@ import 'package:mi_finca_app/features/expenses/domain/entities/expense.dart';
 
 class ExpenseLocalDataSource {
   const ExpenseLocalDataSource(this._database);
+
   final AppDatabase _database;
+
   Future<List<Expense>> getAll() async => (await _database.readRecords(
     'expenses',
   )).map(ExpenseModel.fromJson).toList();
-  Future<void> save(Expense expense) => _database.putRecord(
-    'expenses',
-    expense.id,
-    ExpenseModel.toJson(expense),
-    expense.updatedAt,
-  );
+
+  Future<void> save(Expense expense, {bool pending = true}) {
+    return _database.putRecord(
+      'expenses',
+      expense.id,
+      ExpenseModel.toJson(expense),
+      expense.updatedAt,
+      pending: pending,
+    );
+  }
+
+  Future<void> markSynced(String id) {
+    return _database.markRecordSynced('expenses', id);
+  }
 }

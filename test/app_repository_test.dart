@@ -76,7 +76,7 @@ void main() {
 
     expect((await authRepository.currentSession())?.email, session.email);
     expect((await animalRepository.getAll()).single.code, animal.code);
-    expect(await syncRepository.pendingCount(), 1);
+    expect(await syncRepository.pendingCount(), 0);
   });
 
   test('marks the local outbox as synchronized', () async {

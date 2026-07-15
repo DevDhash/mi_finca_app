@@ -22,9 +22,10 @@ class ExpenseRepositoryImpl implements ExpenseRepository {
       for (final expense in localItems) {
         try {
           await _remote.upsert(expense);
+          await _local.markSynced(expense.id);
         } catch (_) {
           // Offline-first:
-          // Si falla Supabase, seguimos usando gastos locales.
+          // Si falla Supabase, el gasto queda pending = 1.
         }
       }
 
@@ -35,7 +36,18 @@ class ExpenseRepositoryImpl implements ExpenseRepository {
       final remoteItems = await _remote.getAll();
 
       for (final expense in remoteItems) {
-        await _local.save(expense);
+        await _local.save(
+          Expense(
+            id: expense.id,
+            category: expense.category,
+            amount: expense.amount,
+            date: expense.date,
+            note: expense.note,
+            updatedAt: expense.updatedAt,
+            syncStatus: SyncStatus.synced,
+          ),
+          pending: false,
+        );
       }
 
       return remoteItems;
@@ -60,9 +72,11 @@ class ExpenseRepositoryImpl implements ExpenseRepository {
           syncStatus: SyncStatus.synced,
         ),
       );
+
+      await _local.markSynced(expense.id);
     } catch (_) {
       // Offline-first:
-      // Si falla Supabase, queda guardado localmente como pendiente.
+      // Si falla Supabase, queda pending = 1 para reintentar luego.
     }
   }
 }

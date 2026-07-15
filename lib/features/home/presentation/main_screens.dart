@@ -880,71 +880,215 @@ class SyncScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final d = ref.watch(syncViewModelProvider).requireValue;
+    final sync = ref.watch(syncViewModelProvider).requireValue;
 
-    final icon = !d.isOnline
-        ? Icons.cloud_off
-        : d.isSyncing
-        ? Icons.cloud_sync
-        : d.pendingChanges > 0
-        ? Icons.cloud_upload
-        : Icons.cloud_done;
+    final isSynced = sync.pendingChanges == 0 && sync.isOnline;
+    final isOffline = !sync.isOnline;
+    final isPending = sync.pendingChanges > 0 && sync.isOnline;
 
-    final title = !d.isOnline
-        ? 'Sin conexión'
-        : d.isSyncing
-        ? 'Sincronizando cambios…'
-        : d.pendingChanges > 0
-        ? '${d.pendingChanges} cambios pendientes'
+    final icon = isOffline
+        ? Icons.cloud_off_rounded
+        : sync.isSyncing
+        ? Icons.cloud_sync_rounded
+        : isPending
+        ? Icons.cloud_upload_rounded
+        : Icons.cloud_done_rounded;
+
+    final title = isOffline
+        ? 'Modo sin conexión'
+        : sync.isSyncing
+        ? 'Sincronizando cambios'
+        : isPending
+        ? '${sync.pendingChanges} cambios pendientes'
         : 'Todo sincronizado';
+
+    final description = isOffline
+        ? 'Puedes seguir registrando datos. Se guardarán localmente y se subirán cuando vuelvas a tener conexión.'
+        : isPending
+        ? 'Hay cambios guardados en el dispositivo que aún no se han subido a Supabase.'
+        : 'Tus datos locales están sincronizados con Supabase.';
+
+    final iconColor = isOffline
+        ? AppColors.muted
+        : isPending
+        ? AppColors.warning
+        : AppColors.primary;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Sincronización')),
-      body: Padding(
+      body: ListView(
         padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            const SizedBox(height: 30),
-            Icon(
-              icon,
-              size: 90,
-              color: d.pendingChanges > 0
-                  ? AppColors.warning
-                  : AppColors.primary,
+        children: [
+          const SizedBox(height: 16),
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(28),
             ),
-            const SizedBox(height: 18),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              d.lastSync == null
-                  ? 'Todavía no se realizó una sincronización.'
-                  : 'Última sincronización: ${d.lastSync!.day}/${d.lastSync!.month} ${d.lastSync!.hour}:${d.lastSync!.minute.toString().padLeft(2, '0')}',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            SwitchListTile(
-              title: const Text('Simular conexión'),
-              subtitle: const Text(
-                'Se reemplaza por connectivity_plus al integrar el backend.',
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(22, 30, 22, 28),
+              child: Column(
+                children: [
+                  Container(
+                    width: 118,
+                    height: 118,
+                    decoration: BoxDecoration(
+                      color: iconColor.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(icon, size: 68, color: iconColor),
+                  ),
+                  const SizedBox(height: 22),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.text,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    description,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      height: 1.35,
+                      color: AppColors.muted,
+                    ),
+                  ),
+                ],
               ),
-              value: d.isOnline,
-              onChanged: ref.read(syncViewModelProvider.notifier).setOnline,
             ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: !d.isOnline || d.pendingChanges == 0 || d.isSyncing
-                  ? null
-                  : ref.read(syncViewModelProvider.notifier).syncNow,
-              icon: const Icon(Icons.sync),
-              label: const Text('Sincronizar ahora'),
+          ),
+          const SizedBox(height: 18),
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(22),
             ),
-          ],
-        ),
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                children: [
+                  _SyncInfoRow(
+                    icon: Icons.pending_actions_rounded,
+                    label: 'Cambios pendientes',
+                    value: '${sync.pendingChanges}',
+                  ),
+                  const Divider(height: 26),
+                  _SyncInfoRow(
+                    icon: Icons.schedule_rounded,
+                    label: 'Última sincronización',
+                    value: sync.lastSync == null
+                        ? 'Aún no realizada'
+                        : '${sync.lastSync!.day}/${sync.lastSync!.month}/${sync.lastSync!.year} ${sync.lastSync!.hour}:${sync.lastSync!.minute.toString().padLeft(2, '0')}',
+                  ),
+                  const Divider(height: 26),
+                  _SyncInfoRow(
+                    icon: sync.isOnline
+                        ? Icons.wifi_rounded
+                        : Icons.wifi_off_rounded,
+                    label: 'Estado de conexión',
+                    value: sync.isOnline ? 'Con conexión' : 'Sin conexión',
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          SwitchListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+            title: const Text(
+              'Modo offline manual',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+            subtitle: const Text(
+              'Úsalo para probar cómo responde la app cuando no hay internet.',
+            ),
+            value: !sync.isOnline,
+            onChanged: (offline) {
+              ref.read(syncViewModelProvider.notifier).setOnline(!offline);
+            },
+          ),
+          const SizedBox(height: 20),
+          FilledButton.icon(
+            onPressed:
+                !sync.isOnline || sync.pendingChanges == 0 || sync.isSyncing
+                ? null
+                : ref.read(syncViewModelProvider.notifier).syncNow,
+            icon: sync.isSyncing
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.sync_rounded),
+            label: Text(
+              sync.isSyncing ? 'Sincronizando...' : 'Sincronizar ahora',
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (isSynced)
+            const Text(
+              'No hay acciones pendientes por realizar.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.muted),
+            )
+          else if (isOffline)
+            const Text(
+              'Cuando vuelvas a estar en línea, podrás sincronizar los cambios pendientes.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.muted),
+            ),
+        ],
       ),
+    );
+  }
+}
+
+class _SyncInfoRow extends StatelessWidget {
+  const _SyncInfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        CircleAvatar(
+          backgroundColor: AppColors.primaryLight,
+          child: Icon(icon, color: AppColors.primaryDark),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.muted,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            style: const TextStyle(
+              color: AppColors.text,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

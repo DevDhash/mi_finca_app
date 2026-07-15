@@ -22,9 +22,10 @@ class PaddockRepositoryImpl implements PaddockRepository {
       for (final paddock in localItems) {
         try {
           await _remote.upsert(paddock);
+          await _local.markSynced(paddock.id);
         } catch (_) {
           // Offline-first:
-          // Si falla Supabase, seguimos usando la data local.
+          // Si falla Supabase, el potrero queda pending = 1.
         }
       }
 
@@ -35,7 +36,10 @@ class PaddockRepositoryImpl implements PaddockRepository {
       final remoteItems = await _remote.getAll();
 
       for (final paddock in remoteItems) {
-        await _local.save(paddock);
+        await _local.save(
+          paddock.copyWith(syncStatus: SyncStatus.synced),
+          pending: false,
+        );
       }
 
       return remoteItems;
@@ -50,9 +54,11 @@ class PaddockRepositoryImpl implements PaddockRepository {
 
     try {
       await _remote.upsert(paddock.copyWith(syncStatus: SyncStatus.synced));
+
+      await _local.markSynced(paddock.id);
     } catch (_) {
       // Offline-first:
-      // Si Supabase falla, queda guardado localmente como pendiente.
+      // Si falla Supabase, queda pending = 1 para reintentar luego.
     }
   }
 }
