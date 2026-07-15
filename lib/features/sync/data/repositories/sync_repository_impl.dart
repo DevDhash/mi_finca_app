@@ -21,6 +21,8 @@ class SyncRepositoryImpl implements SyncRepository {
   Future<void> pushPendingChanges() async {
     final records = await _local.readPendingRecords();
 
+    var syncedCount = 0;
+
     for (final record in records) {
       try {
         await _remote.pushRecord(record);
@@ -29,12 +31,16 @@ class SyncRepositoryImpl implements SyncRepository {
           collection: record.collection,
           id: record.id,
         );
+
+        syncedCount++;
       } catch (_) {
         // Offline-first:
         // Si un registro falla, se mantiene pending = 1 para reintentar luego.
       }
     }
 
-    await _local.saveLastSync(DateTime.now());
+    if (syncedCount > 0) {
+      await _local.saveLastSync(DateTime.now());
+    }
   }
 }
