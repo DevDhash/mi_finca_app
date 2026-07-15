@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mi_finca_app/core/database/database_provider.dart';
 import 'package:mi_finca_app/features/expenses/data/datasources/expense_local_datasource.dart';
@@ -5,6 +7,7 @@ import 'package:mi_finca_app/features/expenses/data/datasources/expense_remote_d
 import 'package:mi_finca_app/features/expenses/data/repositories/expense_repository_impl.dart';
 import 'package:mi_finca_app/features/expenses/domain/entities/expense.dart';
 import 'package:mi_finca_app/features/expenses/domain/repositories/expense_repository.dart';
+import 'package:mi_finca_app/features/sync/presentation/viewmodels/sync_view_model.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 final expenseLocalDataSourceProvider = Provider(
@@ -58,6 +61,8 @@ class ExpenseViewModel extends AsyncNotifier<List<Expense>> {
     }
 
     state = AsyncData(items);
+
+    unawaited(ref.read(syncViewModelProvider.notifier).syncPendingIfOnline());
   }
 
   Future<void> reload() async {

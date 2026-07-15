@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mi_finca_app/core/database/database_provider.dart';
 import 'package:mi_finca_app/features/paddocks/data/datasources/paddock_local_datasource.dart';
@@ -5,6 +7,7 @@ import 'package:mi_finca_app/features/paddocks/data/datasources/paddock_remote_d
 import 'package:mi_finca_app/features/paddocks/data/repositories/paddock_repository_impl.dart';
 import 'package:mi_finca_app/features/paddocks/domain/entities/paddock.dart';
 import 'package:mi_finca_app/features/paddocks/domain/repositories/paddock_repository.dart';
+import 'package:mi_finca_app/features/sync/presentation/viewmodels/sync_view_model.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 final paddockLocalDataSourceProvider = Provider(
@@ -46,6 +49,8 @@ class PaddockViewModel extends AsyncNotifier<List<Paddock>> {
     }
 
     state = AsyncData(items);
+
+    unawaited(ref.read(syncViewModelProvider.notifier).syncPendingIfOnline());
   }
 
   Future<void> reload() async {

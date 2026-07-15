@@ -57,7 +57,7 @@ void main() {
 
   tearDown(() => database.close());
 
-  test('persists a session and animal locally', () async {
+  test('persists a session and animal as a pending local change', () async {
     const session = UserSession(id: 'u1', name: 'Ana', email: 'ana@test.pe');
     final now = DateTime(2026, 6, 19);
 
@@ -76,7 +76,7 @@ void main() {
 
     expect((await authRepository.currentSession())?.email, session.email);
     expect((await animalRepository.getAll()).single.code, animal.code);
-    expect(await syncRepository.pendingCount(), 0);
+    expect(await syncRepository.pendingCount(), 1);
   });
 
   test('marks the local outbox as synchronized', () async {

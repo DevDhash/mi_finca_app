@@ -89,8 +89,23 @@ class SyncViewModel extends AsyncNotifier<SyncState> {
   }
 
   Future<void> syncNow() async {
-    final value = state.requireValue;
+    await _syncPendingChanges(state.requireValue);
+  }
 
+  Future<void> syncPendingIfOnline() async {
+    final value = state.value;
+    if (value == null || value.isSyncing) return;
+
+    final repository = ref.read(syncRepositoryProvider);
+    final pendingChanges = await repository.pendingCount();
+
+    final refreshed = value.copyWith(pendingChanges: pendingChanges);
+    state = AsyncData(refreshed);
+
+    await _syncPendingChanges(refreshed);
+  }
+
+  Future<void> _syncPendingChanges(SyncState value) async {
     if (!value.isOnline || value.pendingChanges == 0) return;
 
     state = AsyncData(value.copyWith(isSyncing: true));

@@ -18,19 +18,7 @@ class PaddockRepositoryImpl implements PaddockRepository {
   Future<List<Paddock>> getAll() async {
     final localItems = await _local.getAll();
 
-    if (localItems.isNotEmpty) {
-      for (final paddock in localItems) {
-        try {
-          await _remote.upsert(paddock);
-          await _local.markSynced(paddock.id);
-        } catch (_) {
-          // Offline-first:
-          // Si falla Supabase, el potrero queda pending = 1.
-        }
-      }
-
-      return localItems;
-    }
+    if (localItems.isNotEmpty) return localItems;
 
     try {
       final remoteItems = await _remote.getAll();
@@ -51,14 +39,5 @@ class PaddockRepositoryImpl implements PaddockRepository {
   @override
   Future<void> save(Paddock paddock) async {
     await _local.save(paddock);
-
-    try {
-      await _remote.upsert(paddock.copyWith(syncStatus: SyncStatus.synced));
-
-      await _local.markSynced(paddock.id);
-    } catch (_) {
-      // Offline-first:
-      // Si falla Supabase, queda pending = 1 para reintentar luego.
-    }
   }
 }

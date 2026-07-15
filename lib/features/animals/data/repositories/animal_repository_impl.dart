@@ -19,19 +19,7 @@ class AnimalRepositoryImpl implements AnimalRepository {
   Future<List<Animal>> getAll() async {
     final localItems = await _local.getAll();
 
-    if (localItems.isNotEmpty) {
-      for (final animal in localItems) {
-        try {
-          await _remote.upsertAnimal(animal);
-          await _local.markAnimalSynced(animal.id);
-        } catch (_) {
-          // Offline-first:
-          // Si falla Supabase, el animal queda pending = 1.
-        }
-      }
-
-      return localItems;
-    }
+    if (localItems.isNotEmpty) return localItems;
 
     try {
       final remoteItems = await _remote.getAnimals();
@@ -53,19 +41,7 @@ class AnimalRepositoryImpl implements AnimalRepository {
   Future<List<Movement>> getMovements() async {
     final localItems = await _local.getMovements();
 
-    if (localItems.isNotEmpty) {
-      for (final movement in localItems) {
-        try {
-          await _remote.upsertMovement(movement);
-          await _local.markMovementSynced(movement.id);
-        } catch (_) {
-          // Offline-first:
-          // Si falla Supabase, el movimiento queda pending = 1.
-        }
-      }
-
-      return localItems;
-    }
+    if (localItems.isNotEmpty) return localItems;
 
     try {
       final remoteItems = await _remote.getMovements();
@@ -83,29 +59,10 @@ class AnimalRepositoryImpl implements AnimalRepository {
   @override
   Future<void> save(Animal animal) async {
     await _local.save(animal);
-
-    try {
-      await _remote.upsertAnimal(
-        animal.copyWith(syncStatus: SyncStatus.synced),
-      );
-
-      await _local.markAnimalSynced(animal.id);
-    } catch (_) {
-      // Offline-first:
-      // Si falla Supabase, queda pending = 1 para reintentar luego.
-    }
   }
 
   @override
   Future<void> saveMovement(Movement movement) async {
     await _local.saveMovement(movement);
-
-    try {
-      await _remote.upsertMovement(movement);
-      await _local.markMovementSynced(movement.id);
-    } catch (_) {
-      // Offline-first:
-      // Si falla Supabase, queda pending = 1 para reintentar luego.
-    }
   }
 }

@@ -2,42 +2,47 @@
 
 MVP móvil offline-first para administrar animales, potreros, movimientos y gastos de una finca ganadera.
 
-## Funcionalidad
+La app permite trabajar sin conexión, guardar datos localmente y sincronizarlos con Supabase cuando hay conectividad disponible.
 
-- Acceso y creación de cuenta simulados, más un modo demostración.
+## Funcionalidad principal
+
+- Registro e inicio de sesión con Supabase Auth.
 - Configuración inicial de finca.
-- Dashboard e indicadores básicos.
-- Registro de animales en tres pasos, fotos persistentes, detalle y movimiento entre potreros.
-- Registro y estado de potreros, con rotación manual sugerida.
-- Gastos y resumen mensual.
-- Persistencia SQLite local mediante Drift y cola de cambios pendientes.
-- Sincronización simulada preparada para sustituirse por un backend.
+- Dashboard con resumen de animales, potreros, gastos mensuales y cambios pendientes.
+- Registro de animales en tres pasos.
+- Foto persistente por animal en almacenamiento local del dispositivo.
+- Detalle de animal.
+- Movimiento de animales entre potreros.
+- Historial de movimientos.
+- Registro y estado de potreros.
+- Rotación manual sugerida según días de descanso.
+- Registro de gastos por categoría, monto, fecha y nota.
+- Indicadores básicos de la finca.
+- Pantalla de sincronización con:
+  - cambios pendientes,
+  - última sincronización,
+  - estado de conexión,
+  - modo offline manual para pruebas,
+  - sincronización manual.
 
-## Integración futura con backend
+## Offline-first
 
-Cada feature contiene su contrato de repositorio, fuente local, implementación y ViewModel. Para integrar una API, agrega una fuente remota dentro de la feature y cambia únicamente su implementación de repositorio; las pantallas y casos de uso permanecen iguales.
+La app está diseñada para funcionar en campo, incluso cuando no hay internet.
 
-## Arquitectura
+Cada operación importante se guarda primero en SQLite local mediante Drift. Luego la app intenta sincronizar el cambio con Supabase.
 
-El proyecto usa Feature First + Clean Architecture + MVVM:
+Flujo general:
 
-- `domain/entities`: reglas y entidades de la feature.
-- `domain/repositories`: contratos independientes de Drift o HTTP.
-- `domain/usecases`: operaciones que coordinan reglas de negocio.
-- `data/datasources`: acceso local y mocks remotos.
-- `data/repositories`: implementaciones de los contratos de dominio.
-- `presentation/viewmodels`: estado y acciones de cada feature con Riverpod.
-- `presentation/screens`: vistas sin acceso directo a base de datos.
-
-No existe un controlador ni repositorio global. La raíz solo compone los estados de sesión y módulos para mostrar splash, onboarding o navegación principal. La cola de sincronización escucha cambios del almacenamiento local sin acoplar los ViewModels entre features.
-
-El login del MVP es local: acepta cualquier correo y una clave de al menos cuatro caracteres. `MockRemoteGateway` solo simula el envío de cambios.
-
-## Ejecutar
-
-```bash
-flutter pub get
-flutter run
-```
-
-Para cargar datos de ejemplo, usa **Entrar con datos de demostración** en la pantalla de acceso.
+```text
+Usuario registra un dato
+        ↓
+SQLite local / Drift
+        ↓
+Se intenta subir a Supabase
+        ↓
+Si Supabase responde OK:
+    pending = 0
+Si falla internet o backend:
+    pending = 1
+        ↓
+El cambio queda pendiente para reintento posterior

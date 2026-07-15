@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mi_finca_app/core/database/database_provider.dart';
 import 'package:mi_finca_app/features/animals/data/datasources/animal_local_datasource.dart';
@@ -7,6 +9,7 @@ import 'package:mi_finca_app/features/animals/domain/entities/animal.dart';
 import 'package:mi_finca_app/features/animals/domain/entities/movement.dart';
 import 'package:mi_finca_app/features/animals/domain/repositories/animal_repository.dart';
 import 'package:mi_finca_app/features/animals/domain/usecases/move_animal.dart';
+import 'package:mi_finca_app/features/sync/presentation/viewmodels/sync_view_model.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AnimalState {
@@ -68,6 +71,8 @@ class AnimalViewModel extends AsyncNotifier<AnimalState> {
     }
 
     state = AsyncData(state.requireValue.copyWith(animals: items));
+
+    unawaited(ref.read(syncViewModelProvider.notifier).syncPendingIfOnline());
   }
 
   Future<void> move(Animal animal, String destinationId, DateTime date) async {
@@ -87,6 +92,8 @@ class AnimalViewModel extends AsyncNotifier<AnimalState> {
         movements: [result.movement, ...state.requireValue.movements],
       ),
     );
+
+    unawaited(ref.read(syncViewModelProvider.notifier).syncPendingIfOnline());
   }
 
   Future<void> reload() async {

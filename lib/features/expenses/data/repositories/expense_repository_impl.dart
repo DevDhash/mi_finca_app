@@ -18,19 +18,7 @@ class ExpenseRepositoryImpl implements ExpenseRepository {
   Future<List<Expense>> getAll() async {
     final localItems = await _local.getAll();
 
-    if (localItems.isNotEmpty) {
-      for (final expense in localItems) {
-        try {
-          await _remote.upsert(expense);
-          await _local.markSynced(expense.id);
-        } catch (_) {
-          // Offline-first:
-          // Si falla Supabase, el gasto queda pending = 1.
-        }
-      }
-
-      return localItems;
-    }
+    if (localItems.isNotEmpty) return localItems;
 
     try {
       final remoteItems = await _remote.getAll();
@@ -59,24 +47,5 @@ class ExpenseRepositoryImpl implements ExpenseRepository {
   @override
   Future<void> save(Expense expense) async {
     await _local.save(expense);
-
-    try {
-      await _remote.upsert(
-        Expense(
-          id: expense.id,
-          category: expense.category,
-          amount: expense.amount,
-          date: expense.date,
-          note: expense.note,
-          updatedAt: expense.updatedAt,
-          syncStatus: SyncStatus.synced,
-        ),
-      );
-
-      await _local.markSynced(expense.id);
-    } catch (_) {
-      // Offline-first:
-      // Si falla Supabase, queda pending = 1 para reintentar luego.
-    }
   }
 }
