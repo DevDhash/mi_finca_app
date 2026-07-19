@@ -32,70 +32,56 @@ class AuthViewModel extends AsyncNotifier<UserSession?> {
   }
 
   Future<void> login({
-    required String email,
-    required String password,
-    String? name,
-  }) async {
-    final cleanEmail = email.trim();
-    final cleanPassword = password.trim();
-    final cleanName = name?.trim();
+  required String email,
+  required String password,
+  String? name,
+}) async {
+  final cleanEmail = email.trim();
+  final cleanPassword = password;
+  final cleanName = name?.trim();
 
-    if (cleanEmail.isEmpty || cleanPassword.length < 6) {
-      throw const FormatException(
-        'Ingresa un correo y una clave de al menos 6 caracteres.',
-      );
-    }
-
-    state = const AsyncLoading();
-
-    try {
-      final session = await ref.read(authRepositoryProvider).login(
-            email: cleanEmail,
-            password: cleanPassword,
-            name: cleanName,
-          );
-
-      state = AsyncData(session);
-    } catch (e, stackTrace) {
-      state = AsyncError(e, stackTrace);
-      rethrow;
-    }
+  if (cleanEmail.isEmpty || cleanPassword.length < 6) {
+    throw const FormatException(
+      'Ingresa un correo y una clave de al menos 6 caracteres.',
+    );
   }
+
+  final session = await ref.read(authRepositoryProvider).login(
+        email: cleanEmail,
+        password: cleanPassword,
+        name: cleanName,
+      );
+
+  state = AsyncData(session);
+}
 
   Future<void> signUp({
-    required String email,
-    required String password,
-    required String name,
-  }) async {
-    final cleanEmail = email.trim();
-    final cleanPassword = password.trim();
-    final cleanName = name.trim();
+  required String email,
+  required String password,
+  required String name,
+}) async {
+  final cleanEmail = email.trim();
+  final cleanPassword = password;
+  final cleanName = name.trim();
 
-    if (cleanName.isEmpty) {
-      throw const FormatException('Ingresa tu nombre.');
-    }
-
-    if (cleanEmail.isEmpty || cleanPassword.length < 6) {
-      throw const FormatException(
-        'Ingresa un correo y una clave de al menos 6 caracteres.',
-      );
-    }
-
-    state = const AsyncLoading();
-
-    try {
-      final session = await ref.read(authRepositoryProvider).signUp(
-            email: cleanEmail,
-            password: cleanPassword,
-            name: cleanName,
-          );
-
-      state = AsyncData(session);
-    } catch (e, stackTrace) {
-      state = AsyncError(e, stackTrace);
-      rethrow;
-    }
+  if (cleanName.isEmpty) {
+    throw const FormatException('Ingresa tu nombre.');
   }
+
+  if (cleanEmail.isEmpty || cleanPassword.length < 6) {
+    throw const FormatException(
+      'Ingresa un correo y una clave de al menos 6 caracteres.',
+    );
+  }
+
+  final session = await ref.read(authRepositoryProvider).signUp(
+        email: cleanEmail,
+        password: cleanPassword,
+        name: cleanName,
+      );
+
+  state = AsyncData(session);
+}
 
   Future<void> setSession(UserSession session) async {
     await ref.read(authRepositoryProvider).saveSession(session);

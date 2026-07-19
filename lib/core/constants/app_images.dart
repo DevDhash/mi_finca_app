@@ -18,4 +18,8 @@
   static const String iconToro = 'assets/images/icon_toro.png';
   static const String iconVaca = 'assets/images/icon_vaca.png';
   static const String iconVacuna = 'assets/images/icon_vacuna.png';
+
+  static const String miFincaIcono =
+
+    'assets/images/mi_finca_icono.png';
 }

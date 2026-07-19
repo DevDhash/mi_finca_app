@@ -33,53 +33,66 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   }
 
   Future<void> submit() async {
-  if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) return;
 
-  FocusScope.of(context).unfocus();
+    FocusScope.of(context).unfocus();
 
-  setState(() {
-    busy = true;
-    error = null;
-  });
+    setState(() {
+      busy = true;
+      error = null;
+    });
 
-  try {
-    final authNotifier = ref.read(authViewModelProvider.notifier);
+    try {
+      final authNotifier = ref.read(authViewModelProvider.notifier);
 
-    if (create) {
-      await authNotifier.signUp(
-        email: email.text.trim(),
-        password: password.text.trim(),
-        name: name.text.trim(),
-      );
-    } else {
-      await authNotifier.login(
-        email: email.text.trim(),
-        password: password.text.trim(),
-      );
-    }
-  } on FormatException catch (e) {
-    if (mounted) {
-      setState(() => error = e.message);
-      _showError(e.message);
-    }
-  } catch (e) {
-    final message = _friendlyAuthMessage(e);
+      if (create) {
+        await authNotifier.signUp(
+          email: email.text.trim(),
+          password: password.text,
+          name: name.text.trim(),
+        );
+      } else {
+        await authNotifier.login(
+          email: email.text.trim(),
+          password: password.text,
+        );
+      }
+    } on FormatException catch (exception) {
+      if (!mounted) return;
 
-    if (mounted) {
-      setState(() => error = message);
+      setState(() {
+        error = exception.message;
+      });
+
+      _showError(exception.message);
+    } catch (exception) {
+      final message = _friendlyAuthMessage(exception);
+
+      if (!mounted) return;
+
+      setState(() {
+        error = message;
+      });
+
       _showError(message);
-    }
-  } finally {
-    if (mounted) {
-      setState(() => busy = false);
+    } finally {
+      if (mounted) {
+        setState(() {
+          busy = false;
+        });
+      }
     }
   }
-}
 
   void _toggleMode() {
+    FocusScope.of(context).unfocus();
+
+    _formKey.currentState?.reset();
+
     setState(() {
       create = !create;
       error = null;
+      obscurePassword = true;
       password.clear();
 
       if (!create) {
@@ -148,6 +161,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     final title = create ? 'Crea tu cuenta' : 'Bienvenido a Mi Finca';
+
     final subtitle = create
         ? 'Registra tu acceso para gestionar tu finca desde cualquier lugar.'
         : 'Ingresa con tu correo y contraseña para continuar.';
@@ -172,13 +186,19 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           ),
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 24,
+                vertical: 28,
+              ),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 460),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _LogoHeader(title: title, subtitle: subtitle),
+                    _LogoHeader(
+                      title: title,
+                      subtitle: subtitle,
+                    ),
                     const SizedBox(height: 24),
                     Form(
                       key: _formKey,
@@ -192,7 +212,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                         password: password,
                         onSubmit: submit,
                         onTogglePassword: () {
-                          setState(() => obscurePassword = !obscurePassword);
+                          setState(() {
+                            obscurePassword = !obscurePassword;
+                          });
                         },
                       ),
                     ),
@@ -258,16 +280,19 @@ class _LogoHeader extends StatelessWidget {
               ),
             ],
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(22),
-            child: Image.asset(
-              AppImages.iconCabezaToro,
-              fit: BoxFit.contain,
-              color: AppColors.primaryDark,
-              errorBuilder: (_, __, ___) => const Icon(
-                Icons.agriculture,
-                size: 44,
-                color: AppColors.primaryDark,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(32),
+            child: Transform.scale(
+              scale: 2.8,
+              child: Image.asset(
+                AppImages.miFincaIcono,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.high,
+                errorBuilder: (_, __, ___) => const Icon(
+                  Icons.agriculture,
+                  size: 52,
+                  color: AppColors.primaryDark,
+                ),
               ),
             ),
           ),
@@ -341,9 +366,11 @@ class _AuthPanel extends StatelessWidget {
         children: [
           if (create) ...[
             TextFormField(
+              key: const ValueKey('auth_name_field'),
               controller: name,
               textInputAction: TextInputAction.next,
               textCapitalization: TextCapitalization.words,
+              autofillHints: const [AutofillHints.name],
               decoration: _inputDecoration(
                 label: 'Nombre',
                 icon: Icons.person_outline,
@@ -365,6 +392,7 @@ class _AuthPanel extends StatelessWidget {
             const SizedBox(height: 14),
           ],
           TextFormField(
+            key: const ValueKey('auth_email_field'),
             controller: email,
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.next,
@@ -380,7 +408,9 @@ class _AuthPanel extends StatelessWidget {
                 return 'Ingresa tu correo electrónico.';
               }
 
-              final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+$');
+              final emailRegex = RegExp(
+                r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+              );
 
               if (!emailRegex.hasMatch(cleanValue)) {
                 return 'Ingresa un correo válido.';
@@ -391,12 +421,21 @@ class _AuthPanel extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           TextFormField(
+            key: ValueKey(
+              create
+                  ? 'signup_password_field'
+                  : 'login_password_field',
+            ),
             controller: password,
             obscureText: obscurePassword,
             textInputAction: TextInputAction.done,
-            autofillHints: const [AutofillHints.password],
+            autofillHints: create
+                ? const [AutofillHints.newPassword]
+                : const [AutofillHints.password],
             onFieldSubmitted: (_) {
-              if (!busy) onSubmit();
+              if (!busy) {
+                onSubmit();
+              }
             },
             decoration: _inputDecoration(
               label: 'Contraseña',
@@ -404,6 +443,9 @@ class _AuthPanel extends StatelessWidget {
             ).copyWith(
               suffixIcon: IconButton(
                 onPressed: busy ? null : onTogglePassword,
+                tooltip: obscurePassword
+                    ? 'Mostrar contraseña'
+                    : 'Ocultar contraseña',
                 icon: Icon(
                   obscurePassword
                       ? Icons.visibility_off_outlined
@@ -428,7 +470,10 @@ class _AuthPanel extends StatelessWidget {
             const SizedBox(height: 14),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 12,
+              ),
               decoration: BoxDecoration(
                 color: AppColors.danger.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(16),
@@ -506,7 +551,10 @@ class _AuthPanel extends StatelessWidget {
       prefixIcon: Icon(icon),
       filled: true,
       fillColor: AppColors.primaryLight.withValues(alpha: 0.34),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 18,
+      ),
       labelStyle: TextStyle(
         color: AppColors.primaryDark.withValues(alpha: 0.72),
         fontWeight: FontWeight.w600,
@@ -551,10 +599,12 @@ class FarmSetupScreen extends ConsumerStatefulWidget {
   const FarmSetupScreen({super.key});
 
   @override
-  ConsumerState<FarmSetupScreen> createState() => _FarmSetupScreenState();
+  ConsumerState<FarmSetupScreen> createState() =>
+      _FarmSetupScreenState();
 }
 
-class _FarmSetupScreenState extends ConsumerState<FarmSetupScreen> {
+class _FarmSetupScreenState
+    extends ConsumerState<FarmSetupScreen> {
   final name = TextEditingController();
   final location = TextEditingController();
   final paddock = TextEditingController();
@@ -569,61 +619,87 @@ class _FarmSetupScreenState extends ConsumerState<FarmSetupScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Configura tu finca')),
-        body: Form(
-          key: formKey,
-          child: ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              const Icon(Icons.landscape, size: 72, color: AppColors.primary),
-              const SizedBox(height: 16),
-              const Text(
-                'Empecemos por lo esencial',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Configura tu finca'),
+      ),
+      body: Form(
+        key: formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            const Icon(
+              Icons.landscape,
+              size: 72,
+              color: AppColors.primary,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Empecemos por lo esencial',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Podrás cambiar estos datos más adelante.',
-                style: TextStyle(fontSize: 16, color: AppColors.muted),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Podrás cambiar estos datos más adelante.',
+              style: TextStyle(
+                fontSize: 16,
+                color: AppColors.muted,
               ),
-              const SizedBox(height: 24),
-              TextFormField(
-                controller: name,
-                decoration:
-                    const InputDecoration(labelText: 'Nombre de la finca'),
-                validator: required,
+            ),
+            const SizedBox(height: 24),
+            TextFormField(
+              controller: name,
+              decoration: const InputDecoration(
+                labelText: 'Nombre de la finca',
               ),
-              const SizedBox(height: 14),
-              TextFormField(
-                controller: location,
-                decoration: const InputDecoration(labelText: 'Ubicación'),
-                validator: required,
+              validator: _requiredValidator,
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: location,
+              decoration: const InputDecoration(
+                labelText: 'Ubicación',
               ),
-              const SizedBox(height: 14),
-              TextFormField(
-                controller: paddock,
-                decoration: const InputDecoration(
-                  labelText: 'Nombre del primer potrero',
-                  hintText: 'Ejemplo: Potrero Norte',
-                ),
+              validator: _requiredValidator,
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: paddock,
+              decoration: const InputDecoration(
+                labelText: 'Nombre del primer potrero',
+                hintText: 'Ejemplo: Potrero Norte',
               ),
-              const SizedBox(height: 24),
-              FilledButton(
-                onPressed: () async {
-                  if (!formKey.currentState!.validate()) return;
+            ),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: () async {
+                if (!formKey.currentState!.validate()) return;
 
-                  await ref
-                      .read(onboardingViewModelProvider.notifier)
-                      .configure(name.text, location.text, paddock.text);
-                },
-                child: const Text('Guardar y comenzar'),
-              ),
-            ],
-          ),
+                await ref
+                    .read(onboardingViewModelProvider.notifier)
+                    .configure(
+                      name.text.trim(),
+                      location.text.trim(),
+                      paddock.text.trim(),
+                    );
+              },
+              child: const Text('Guardar y comenzar'),
+            ),
+          ],
         ),
-      );
+      ),
+    );
+  }
 
-  String? required(String? value) =>
-      value == null || value.trim().isEmpty ? 'Este dato es necesario' : null;
+  String? _requiredValidator(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Este dato es necesario';
+    }
+
+    return null;
+  }
 }
