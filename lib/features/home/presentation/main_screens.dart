@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:mi_finca_app/app/theme/app_theme.dart';
 import 'package:mi_finca_app/core/constants/app_images.dart';
 import 'package:mi_finca_app/core/widgets/common_widgets.dart';
@@ -13,6 +12,7 @@ import 'package:mi_finca_app/features/farm/presentation/viewmodels/farm_view_mod
 import 'package:mi_finca_app/features/paddocks/presentation/screens/paddock_screens.dart';
 import 'package:mi_finca_app/features/paddocks/presentation/viewmodels/paddock_view_model.dart';
 import 'package:mi_finca_app/features/sync/presentation/viewmodels/sync_view_model.dart';
+import 'package:mi_finca_app/core/formatters/currency_formatter.dart';
 
 class MainShell extends ConsumerStatefulWidget {
   const MainShell({super.key});
@@ -110,7 +110,7 @@ class _MainShellState extends ConsumerState<MainShell> {
                 ),
                 _FabMenuAction(
                   label: 'Mover lote',
-                  iconPath: AppImages.iconCabezaToro,
+                  iconPath: AppImages.iconMovimientoGanado,
                   onTap: () {
                     _closeFab();
                     setState(() => index = 1);
@@ -332,10 +332,7 @@ class DashboardScreen extends ConsumerWidget {
                     Expanded(
                       child: _Metric(
                         iconPath: AppImages.iconGastos,
-                        value: NumberFormat.compactCurrency(
-                          locale: 'es_PE',
-                          symbol: 'S/',
-                        ).format(monthlyTotal),
+                        value: CurrencyFormatter.compactSoles(monthlyTotal),
                         label: 'Gastos del mes',
                       ),
                     ),
@@ -385,7 +382,7 @@ class DashboardScreen extends ConsumerWidget {
                   children: [
                     Expanded(
                       child: _HomeActionCard(
-                        iconPath: AppImages.iconCabezaToro,
+                        iconPath: AppImages.iconMovimientoGanado,
                         title: 'Movimiento',
                         subtitle: 'Mover ganado',
                         onTap: () => Navigator.push(
@@ -442,51 +439,7 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                   ),
                 ],
-                const SizedBox(height: 24),
-                const Text(
-                  'Registrados recientemente',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.text,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                if (animals.isEmpty)
-                  Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(22),
-                    ),
-                    child: const Padding(
-                      padding: EdgeInsets.all(18),
-                      child: Text(
-                        'Don Finca te recomienda registrar tu primer animal desde el botón +.',
-                      ),
-                    ),
-                  )
-                else
-                  ...animals
-                      .take(3)
-                      .map(
-                        (a) => Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: AnimalListCard(
-                            animal: a,
-                            paddockName: paddocks
-                                .where((p) => p.id == a.paddockId)
-                                .firstOrNull
-                                ?.name,
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    AnimalDetailScreen(animalId: a.id),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
+
                 const SizedBox(height: 100),
               ],
             ),
@@ -507,7 +460,13 @@ class _HomeHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final greetingName = userName.trim().isEmpty ? '' : ', $userName';
+    final cleanUserName = userName.trim();
+
+    final firstName = cleanUserName.isEmpty
+        ? ''
+        : cleanUserName.split(RegExp(r'\s+')).first;
+
+    final greetingName = firstName.isEmpty ? '' : ', $firstName';
 
     return Container(
       height: 290,
@@ -523,29 +482,38 @@ class _HomeHero extends StatelessWidget {
         child: Stack(
           children: [
             Positioned(
-              top: 18,
+              top: 10,
               left: 22,
               right: 22,
               child: Row(
                 children: [
                   Container(
-                    width: 42,
-                    height: 42,
+                    width: 48,
+                    height: 48,
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.14),
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: Image.asset(
-                      AppImages.iconCabezaToro,
-                      width: 28,
-                      height: 28,
-                      fit: BoxFit.contain,
-                      color: Colors.white,
-                      errorBuilder: (_, __, ___) =>
-                          const Icon(Icons.agriculture, color: Colors.white),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: Transform.scale(
+                        scale: 2.6,
+                        child: Image.asset(
+                          AppImages.miFincaIcono,
+                          fit: BoxFit.contain,
+                          filterQuality: FilterQuality.high,
+                          color: Colors.white,
+                          colorBlendMode: BlendMode.srcIn,
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.agriculture,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       farmName,
@@ -563,13 +531,15 @@ class _HomeHero extends StatelessWidget {
             ),
             Positioned(
               left: 22,
-              top: 80,
+              top: 74,
               width: 220,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     '¡Hola$greetingName!',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 25,
@@ -599,11 +569,11 @@ class _HomeHero extends StatelessWidget {
               ),
             ),
             Positioned(
-              right: -20,
+              right: 3,
               bottom: -8,
               child: Image.asset(
                 _donFincaPath,
-                height: 238,
+                height: 260,
                 fit: BoxFit.contain,
                 errorBuilder: (context, error, stackTrace) {
                   return const SizedBox(
@@ -688,7 +658,10 @@ class _HomeActionCard extends StatelessWidget {
           children: [
             CircleAvatar(
               backgroundColor: AppColors.primaryLight,
-              child: _BrandAssetIcon(path: iconPath, size: 28),
+              child: Transform.scale(
+                scale: iconPath == AppImages.iconMovimientoGanado ? 1.75 : 1,
+                child: _BrandAssetIcon(path: iconPath, size: 28),
+              ),
             ),
             const SizedBox(height: 14),
             Text(
@@ -832,10 +805,7 @@ class IndicatorsScreen extends ConsumerWidget {
       ('Animales', '${animals.length}', AppImages.iconVaca),
       (
         'Costos del mes',
-        NumberFormat.compactCurrency(
-          locale: 'es_PE',
-          symbol: 'S/',
-        ).format(monthlyTotal),
+        CurrencyFormatter.compactSoles(monthlyTotal),
         AppImages.iconGastos,
       ),
       (
