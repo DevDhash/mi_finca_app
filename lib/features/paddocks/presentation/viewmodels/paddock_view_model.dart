@@ -37,9 +37,34 @@ class PaddockViewModel extends AsyncNotifier<List<Paddock>> {
   }
 
   Future<void> save(Paddock paddock) async {
+    final items = [...state.requireValue];
+    final now = DateTime.now();
+
+    if (paddock.status == 'En uso') {
+      for (var i = 0; i < items.length; i++) {
+        final current = items[i];
+
+        if (current.id == paddock.id || current.status != 'En uso') continue;
+
+        final rested = Paddock(
+          id: current.id,
+          name: current.name,
+          areaHectares: current.areaHectares,
+          pastureType: current.pastureType,
+          requiredRestDays: current.requiredRestDays,
+          status: 'Descansando',
+          lastGrazingEndDate: now,
+          createdAt: current.createdAt,
+          updatedAt: now,
+        );
+
+        await ref.read(paddockRepositoryProvider).save(rested);
+        items[i] = rested;
+      }
+    }
+
     await ref.read(paddockRepositoryProvider).save(paddock);
 
-    final items = [...state.requireValue];
     final index = items.indexWhere((item) => item.id == paddock.id);
 
     if (index < 0) {

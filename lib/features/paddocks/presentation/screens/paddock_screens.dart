@@ -4,6 +4,7 @@ import 'package:mi_finca_app/app/theme/app_theme.dart';
 import 'package:mi_finca_app/core/widgets/common_widgets.dart';
 import 'package:mi_finca_app/features/animals/presentation/viewmodels/animal_view_model.dart';
 import 'package:mi_finca_app/features/paddocks/domain/entities/paddock.dart';
+import 'package:mi_finca_app/features/paddocks/domain/usecases/calculate_paddock_rotation.dart';
 import 'package:mi_finca_app/features/paddocks/presentation/viewmodels/paddock_view_model.dart';
 import 'package:uuid/uuid.dart';
 
@@ -98,7 +99,10 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
   final name = TextEditingController();
   final area = TextEditingController();
   final grass = TextEditingController();
+  final restDays = TextEditingController();
+  DateTime? lastGrazingEndDate;
   String status = 'Disponible';
+
   @override
   void initState() {
     super.initState();
@@ -107,6 +111,8 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
       name.text = p.name;
       area.text = p.areaHectares.toString();
       grass.text = p.grassType;
+      restDays.text = p.requiredRestDays?.toString() ?? '';
+      lastGrazingEndDate = p.lastGrazingEndDate;
       status = p.status;
     }
   }
@@ -116,6 +122,7 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
     name.dispose();
     area.dispose();
     grass.dispose();
+    restDays.dispose();
     super.dispose();
   }
 
@@ -152,8 +159,45 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
           const SizedBox(height: 14),
           TextFormField(
             controller: grass,
-            decoration: const InputDecoration(labelText: 'Tipo de pasto'),
-            validator: req,
+            decoration: const InputDecoration(labelText: 'Tipo de pastura'),
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: restDays,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Descanso requerido',
+              suffixText: 'días',
+            ),
+            validator: (v) {
+              final value = v?.trim() ?? '';
+              if (value.isEmpty) return null;
+
+              final parsed = int.tryParse(value);
+              if (parsed == null || parsed <= 0) {
+                return 'Ingresa una cantidad mayor a cero';
+              }
+
+              return null;
+            },
+          ),
+          const SizedBox(height: 14),
+          ListTile(
+            enabled: status != 'En uso',
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.event_available_outlined),
+            title: const Text('Fecha de salida del ganado'),
+            subtitle: Text(
+              status == 'En uso'
+                  ? 'No aplica mientras el potrero está en uso'
+                  : lastGrazingEndDate == null
+                  ? 'Sin fecha registrada'
+                  : MaterialLocalizations.of(
+                      context,
+                    ).formatMediumDate(lastGrazingEndDate!),
+            ),
+            trailing: const Icon(Icons.calendar_month_outlined),
+            onTap: pickLastGrazingEndDate,
           ),
           const SizedBox(height: 14),
           DropdownButtonFormField<String>(
@@ -180,17 +224,37 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
   );
   String? req(String? v) =>
       v == null || v.trim().isEmpty ? 'Este dato es necesario' : null;
+
+  Future<void> pickLastGrazingEndDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      firstDate: DateTime(now.year - 5),
+      lastDate: now,
+      initialDate: lastGrazingEndDate ?? now,
+    );
+
+    if (picked != null && mounted) {
+      setState(() => lastGrazingEndDate = picked);
+    }
+  }
+
   Future<void> save() async {
     if (!key.currentState!.validate()) return;
     final now = DateTime.now();
     final old = widget.paddock;
+    final requiredRestDays = int.tryParse(restDays.text.trim());
+    final grazingEndDate = status == 'En uso'
+        ? null
+        : lastGrazingEndDate ?? (old?.status == 'En uso' ? now : null);
     final p = Paddock(
       id: old?.id ?? const Uuid().v4(),
       name: name.text.trim(),
       areaHectares: double.parse(area.text.replaceAll(',', '.')),
-      grassType: grass.text.trim(),
+      pastureType: grass.text.trim().isEmpty ? null : grass.text.trim(),
+      requiredRestDays: requiredRestDays,
       status: status,
-      lastUsedAt: old?.lastUsedAt,
+      lastGrazingEndDate: grazingEndDate,
       createdAt: old?.createdAt ?? now,
       updatedAt: now,
     );
@@ -211,6 +275,8 @@ class PaddockDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final paddocks = ref.watch(paddockViewModelProvider).requireValue;
     final p = paddocks.firstWhere((p) => p.id == paddockId);
+    final referenceDate = DateTime.now();
+    final elapsedRestDays = _elapsedRestDays(p, referenceDate);
     final animals = ref
         .watch(animalViewModelProvider)
         .requireValue
@@ -255,9 +321,16 @@ class PaddockDetailScreen extends ConsumerWidget {
                     '${p.areaHectares} hectáreas · ${p.grassType}',
                     style: const TextStyle(fontSize: 16),
                   ),
-                  if (p.lastUsedAt != null)
+                  const SizedBox(height: 8),
+                  Text(
+                    p.requiredRestDays == null
+                        ? 'Descanso requerido sin configurar'
+                        : 'Descanso requerido: ${p.requiredRestDays} días',
+                    style: const TextStyle(color: AppColors.muted),
+                  ),
+                  if (p.lastGrazingEndDate != null)
                     Text(
-                      '${p.restDays} días desde el último uso',
+                      '$elapsedRestDays días desde la salida del ganado',
                       style: const TextStyle(color: AppColors.muted),
                     ),
                 ],
@@ -298,92 +371,84 @@ class RotationScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final paddocks = ref.watch(paddockViewModelProvider).requireValue;
-    final candidates = paddocks.where((p) => p.status != 'En uso').toList()
-      ..sort((a, b) => b.restDays.compareTo(a.restDays));
-    final suggested = candidates.firstOrNull;
+    final animals = ref.watch(animalViewModelProvider).requireValue.animals;
+    final referenceDate = DateTime.now();
+    final rotation = const CalculatePaddockRotation()(
+      paddocks: paddocks,
+      animals: animals,
+      referenceDate: referenceDate,
+    );
+
     return Scaffold(
       appBar: AppBar(title: const Text('Rotación de potreros')),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          if (suggested != null)
-            Card(
-              color: AppColors.primaryLight,
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Potrero sugerido',
-                      style: TextStyle(
-                        color: AppColors.primaryDark,
-                        fontWeight: FontWeight.bold,
-                      ),
+          Card(
+            color: AppColors.primaryLight,
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: rotation.active == null
+                  ? const _RotationMessage(
+                      title: 'No hay un potrero en uso',
+                      body:
+                          'Asigna el ganado a un potrero para iniciar el pastoreo.',
+                    )
+                  : _RotationMessage(
+                      title:
+                          'Potrero ${rotation.active!.paddock.name} se está usando',
+                      body:
+                          'Actualmente tiene ${rotation.active!.animalCount} animales.',
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      suggested.name,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      'Descansó ${suggested.restDays} días · sugerencia local del MVP',
-                    ),
-                  ],
-                ),
-              ),
             ),
+          ),
+          const SizedBox(height: 14),
+          Card(
+            color: const Color(0xFFFFF3D8),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: rotation.next == null
+                  ? const _RotationMessage(
+                      title: 'No hay una próxima rotación calculada',
+                      body: 'Configura el tiempo de descanso de tus potreros.',
+                    )
+                  : _RotationMessage(
+                      title: rotation.next!.isReady
+                          ? 'Potrero ${rotation.next!.paddock.name} está listo para la rotación'
+                          : 'Potrero ${rotation.next!.paddock.name} estará listo en ${rotation.next!.remainingRestDays} días',
+                      body: rotation.next!.isReady
+                          ? 'Cumplió sus ${rotation.next!.requiredRestDays} días de descanso.'
+                          : 'Será el próximo potrero disponible para la rotación.',
+                    ),
+            ),
+          ),
           const SizedBox(height: 20),
           const Text(
-            'Orden de uso',
+            'Orden de revisión',
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
-          SizedBox(
-            height: 110,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: paddocks.length,
-              separatorBuilder: (_, _) =>
-                  const Icon(Icons.arrow_forward, color: AppColors.muted),
-              itemBuilder: (_, i) {
-                final p = paddocks[i];
-                return SizedBox(
-                  width: 130,
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            p.status == 'En uso' ? Icons.pets : Icons.grass,
-                            color: AppColors.primary,
-                          ),
-                          Text(
-                            p.name,
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          Text(
-                            p.status,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: AppColors.muted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
+          ...paddocks.map((p) {
+            final elapsed = _elapsedRestDays(p, referenceDate);
+
+            return Card(
+              child: ListTile(
+                leading: Icon(
+                  p.status == 'En uso' ? Icons.pets : Icons.grass_outlined,
+                  color: AppColors.primary,
+                ),
+                title: Text(p.name),
+                subtitle: Text(
+                  [
+                    p.status,
+                    if (p.requiredRestDays != null)
+                      '${p.requiredRestDays} días requeridos',
+                    if (elapsed != null) '$elapsed días de descanso',
+                  ].join(' · '),
+                ),
+              ),
+            );
+          }),
           const SizedBox(height: 20),
           const Text(
             'En este MVP, los movimientos se registran desde el detalle de cada animal.',
@@ -393,4 +458,35 @@ class RotationScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _RotationMessage extends StatelessWidget {
+  const _RotationMessage({required this.title, required this.body});
+
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        title,
+        style: const TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w800,
+          color: AppColors.text,
+        ),
+      ),
+      const SizedBox(height: 6),
+      Text(body, style: const TextStyle(color: AppColors.muted, height: 1.3)),
+    ],
+  );
+}
+
+int? _elapsedRestDays(Paddock paddock, DateTime referenceDate) {
+  final lastGrazingEndDate = paddock.lastGrazingEndDate;
+  if (lastGrazingEndDate == null) return null;
+
+  return referenceDate.difference(lastGrazingEndDate).inDays;
 }

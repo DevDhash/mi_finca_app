@@ -43,10 +43,11 @@ class SupabaseSyncRemoteDataSource implements SyncRemoteDataSource {
       'user_id': userId,
       'name': payload['name'],
       'area': payload['areaHectares'],
-      'grass_type': payload['grassType'],
+      'pasture_type': payload['pastureType'] ?? payload['grassType'],
+      'required_rest_days': payload['requiredRestDays'],
       'status': payload['status'],
-      'rest_days': _restDays(payload['lastUsedAt']),
-      'last_used_at': payload['lastUsedAt'],
+      'last_grazing_end_date':
+          payload['lastGrazingEndDate'] ?? payload['lastUsedAt'],
       'created_at': payload['createdAt'],
       'updated_at': payload['updatedAt'],
     });
@@ -103,14 +104,5 @@ class SupabaseSyncRemoteDataSource implements SyncRemoteDataSource {
       'note': payload['note'],
       'updated_at': payload['updatedAt'],
     });
-  }
-
-  int _restDays(Object? lastUsedAt) {
-    if (lastUsedAt == null) return 0;
-
-    final parsed = DateTime.tryParse(lastUsedAt.toString());
-    if (parsed == null) return 0;
-
-    return DateTime.now().difference(parsed).inDays;
   }
 }

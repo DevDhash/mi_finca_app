@@ -5,39 +5,52 @@ class Paddock {
     required this.id,
     required this.name,
     required this.areaHectares,
-    required this.grassType,
+    String? grassType,
+    String? pastureType,
+    this.requiredRestDays,
     this.status = 'Disponible',
-    this.lastUsedAt,
+    DateTime? lastUsedAt,
+    DateTime? lastGrazingEndDate,
     required this.createdAt,
     required this.updatedAt,
     this.syncStatus = SyncStatus.pending,
-  });
+  }) : pastureType = pastureType ?? grassType,
+       lastGrazingEndDate = lastGrazingEndDate ?? lastUsedAt;
+
   final String id;
   final String name;
   final double areaHectares;
-  final String grassType;
+  final String? pastureType;
+  final int? requiredRestDays;
   final String status;
-  final DateTime? lastUsedAt;
+  final DateTime? lastGrazingEndDate;
   final DateTime createdAt;
   final DateTime updatedAt;
   final SyncStatus syncStatus;
-  int get restDays =>
-      lastUsedAt == null ? 0 : DateTime.now().difference(lastUsedAt!).inDays;
+
+  String get grassType => pastureType ?? '';
+  DateTime? get lastUsedAt => lastGrazingEndDate;
+
   Paddock copyWith({
     String? name,
     double? areaHectares,
     String? grassType,
+    String? pastureType,
+    int? requiredRestDays,
     String? status,
     DateTime? lastUsedAt,
+    DateTime? lastGrazingEndDate,
     DateTime? updatedAt,
     SyncStatus? syncStatus,
   }) => Paddock(
     id: id,
     name: name ?? this.name,
     areaHectares: areaHectares ?? this.areaHectares,
-    grassType: grassType ?? this.grassType,
+    pastureType: pastureType ?? grassType ?? this.pastureType,
+    requiredRestDays: requiredRestDays ?? this.requiredRestDays,
     status: status ?? this.status,
-    lastUsedAt: lastUsedAt ?? this.lastUsedAt,
+    lastGrazingEndDate:
+        lastGrazingEndDate ?? lastUsedAt ?? this.lastGrazingEndDate,
     createdAt: createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     syncStatus: syncStatus ?? this.syncStatus,

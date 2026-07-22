@@ -10,6 +10,7 @@ import 'package:mi_finca_app/features/expenses/presentation/expense_screens.dart
 import 'package:mi_finca_app/features/expenses/presentation/viewmodels/expense_view_model.dart';
 import 'package:mi_finca_app/features/farm/presentation/viewmodels/farm_view_model.dart';
 import 'package:mi_finca_app/features/paddocks/presentation/screens/paddock_screens.dart';
+import 'package:mi_finca_app/features/paddocks/domain/usecases/calculate_paddock_rotation.dart';
 import 'package:mi_finca_app/features/paddocks/presentation/viewmodels/paddock_view_model.dart';
 import 'package:mi_finca_app/features/sync/presentation/viewmodels/sync_view_model.dart';
 import 'package:mi_finca_app/core/formatters/currency_formatter.dart';
@@ -271,10 +272,12 @@ class DashboardScreen extends ConsumerWidget {
     final monthlyTotal = ref.watch(monthlyExpenseTotalProvider);
     final sync = ref.watch(syncViewModelProvider).requireValue;
 
-    final suggested =
-        (paddocks.where((p) => p.status != 'En uso').toList()
-              ..sort((a, b) => b.restDays.compareTo(a.restDays)))
-            .firstOrNull;
+    final referenceDate = DateTime.now();
+    final rotation = const CalculatePaddockRotation()(
+      paddocks: paddocks,
+      animals: animals,
+      referenceDate: referenceDate,
+    );
 
     final availablePaddocks = paddocks
         .where((p) => p.status == 'Disponible')
@@ -404,41 +407,34 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                   ],
                 ),
-                if (suggested != null) ...[
-                  const SizedBox(height: 22),
-                  Card(
-                    color: const Color(0xFFFFF3D8),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(22),
-                    ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.all(18),
-                      leading: Container(
-                        width: 42,
-                        height: 42,
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withValues(alpha: 0.14),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: const Icon(
-                          Icons.lightbulb_outline,
-                          color: AppColors.warning,
-                        ),
-                      ),
-                      title: Text(
-                        '${suggested.name} puede estar listo para uso',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.text,
-                        ),
-                      ),
-                      subtitle: Text(
-                        'Lleva ${suggested.restDays} días de descanso.',
-                      ),
-                    ),
-                  ),
-                ],
+                const SizedBox(height: 22),
+                _RotationDashboardCard(
+                  icon: Icons.pets,
+                  color: AppColors.primaryLight,
+                  iconColor: AppColors.primaryDark,
+                  title: rotation.active == null
+                      ? 'No hay un potrero en uso'
+                      : 'Potrero ${rotation.active!.paddock.name} se está usando',
+                  subtitle: rotation.active == null
+                      ? 'Asigna el ganado a un potrero para iniciar el pastoreo.'
+                      : 'Actualmente tiene ${rotation.active!.animalCount} animales.',
+                ),
+                const SizedBox(height: 12),
+                _RotationDashboardCard(
+                  icon: Icons.lightbulb_outline,
+                  color: const Color(0xFFFFF3D8),
+                  iconColor: AppColors.warning,
+                  title: rotation.next == null
+                      ? 'No hay una próxima rotación calculada'
+                      : rotation.next!.isReady
+                      ? 'Potrero ${rotation.next!.paddock.name} está listo para la rotación'
+                      : 'Potrero ${rotation.next!.paddock.name} estará listo en ${rotation.next!.remainingRestDays} días',
+                  subtitle: rotation.next == null
+                      ? 'Configura el tiempo de descanso de tus potreros.'
+                      : rotation.next!.isReady
+                      ? 'Cumplió sus ${rotation.next!.requiredRestDays} días de descanso.'
+                      : 'Será el próximo potrero disponible para la rotación.',
+                ),
 
                 const SizedBox(height: 100),
               ],
@@ -679,6 +675,52 @@ class _HomeActionCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    ),
+  );
+}
+
+class _RotationDashboardCard extends StatelessWidget {
+  const _RotationDashboardCard({
+    required this.icon,
+    required this.color,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final Color color;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    color: color,
+    elevation: 0,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+    child: ListTile(
+      contentPadding: const EdgeInsets.all(18),
+      leading: Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.62),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Icon(icon, color: iconColor),
+      ),
+      title: Text(
+        title,
+        style: const TextStyle(
+          fontWeight: FontWeight.w800,
+          color: AppColors.text,
+        ),
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(subtitle),
       ),
     ),
   );

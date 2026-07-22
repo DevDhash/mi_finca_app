@@ -6,22 +6,35 @@ abstract final class PaddockModel {
     'id': v.id,
     'name': v.name,
     'areaHectares': v.areaHectares,
+
+    // Nuevos nombres de dominio.
+    'pastureType': v.pastureType,
+    'requiredRestDays': v.requiredRestDays,
+    'lastGrazingEndDate': v.lastGrazingEndDate?.toIso8601String(),
+
+    // Alias legacy locales para compatibilidad con datos/pantallas previas.
+    // No implican que Supabase deba seguir usando estas columnas.
     'grassType': v.grassType,
-    'status': v.status,
     'lastUsedAt': v.lastUsedAt?.toIso8601String(),
+
+    'status': v.status,
     'createdAt': v.createdAt.toIso8601String(),
     'updatedAt': v.updatedAt.toIso8601String(),
     'syncStatus': v.syncStatus.name,
   };
+
   static Paddock fromJson(Map<String, Object?> j) => Paddock(
     id: j['id']! as String,
     name: j['name']! as String,
     areaHectares: (j['areaHectares']! as num).toDouble(),
-    grassType: j['grassType']! as String,
+    pastureType: (j['pastureType'] ?? j['grassType']) as String?,
+    requiredRestDays: (j['requiredRestDays'] as num?)?.toInt(),
     status: j['status'] as String? ?? 'Disponible',
-    lastUsedAt: j['lastUsedAt'] == null
+    lastGrazingEndDate: (j['lastGrazingEndDate'] ?? j['lastUsedAt']) == null
         ? null
-        : DateTime.parse(j['lastUsedAt']! as String),
+        : DateTime.parse(
+            (j['lastGrazingEndDate'] ?? j['lastUsedAt'])! as String,
+          ),
     createdAt: DateTime.parse(j['createdAt']! as String),
     updatedAt: DateTime.parse(j['updatedAt']! as String),
     syncStatus: SyncStatus.values.byName(

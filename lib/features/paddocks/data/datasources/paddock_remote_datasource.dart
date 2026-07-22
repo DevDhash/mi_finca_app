@@ -19,10 +19,10 @@ class PaddockRemoteDataSource {
       'user_id': user.id,
       'name': paddock.name,
       'area': paddock.areaHectares,
-      'grass_type': paddock.grassType,
+      'pasture_type': paddock.pastureType,
+      'required_rest_days': paddock.requiredRestDays,
       'status': paddock.status,
-      'rest_days': paddock.restDays,
-      'last_used_at': paddock.lastUsedAt?.toIso8601String(),
+      'last_grazing_end_date': paddock.lastGrazingEndDate?.toIso8601String(),
       'created_at': paddock.createdAt.toIso8601String(),
       'updated_at': paddock.updatedAt.toIso8601String(),
     });
@@ -38,7 +38,7 @@ class PaddockRemoteDataSource {
     final response = await _client
         .from('paddocks')
         .select(
-          'id, name, area, grass_type, status, last_used_at, created_at, updated_at',
+          'id, name, area, pasture_type, required_rest_days, status, last_grazing_end_date, created_at, updated_at',
         )
         .eq('user_id', user.id)
         .isFilter('deleted_at', null)
@@ -50,11 +50,12 @@ class PaddockRemoteDataSource {
             id: json['id'] as String,
             name: json['name'] as String,
             areaHectares: (json['area'] as num?)?.toDouble() ?? 0,
-            grassType: json['grass_type'] as String? ?? '',
+            pastureType: json['pasture_type'] as String?,
+            requiredRestDays: (json['required_rest_days'] as num?)?.toInt(),
             status: json['status'] as String? ?? 'Disponible',
-            lastUsedAt: json['last_used_at'] == null
+            lastGrazingEndDate: json['last_grazing_end_date'] == null
                 ? null
-                : DateTime.parse(json['last_used_at'] as String),
+                : DateTime.parse(json['last_grazing_end_date'] as String),
             createdAt: DateTime.parse(json['created_at'] as String),
             updatedAt: DateTime.parse(json['updated_at'] as String),
             syncStatus: SyncStatus.synced,
