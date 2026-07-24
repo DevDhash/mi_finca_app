@@ -1108,6 +1108,48 @@ class _SyncInfoRow extends StatelessWidget {
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
+  Future<void> _requestSignOut(BuildContext context, WidgetRef ref) async {
+    final pendingChanges = await ref
+        .read(syncRepositoryProvider)
+        .pendingCount();
+
+    if (!context.mounted) return;
+
+    final shouldSignOut =
+        pendingChanges == 0 ||
+        await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Cambios sin sincronizar'),
+                content: const Text(
+                  'Hay cambios sin sincronizar. Si cierras sesión ahora, se perderán de este dispositivo.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('Cancelar'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: const Text('Cerrar sesión'),
+                  ),
+                ],
+              ),
+            ) ==
+            true;
+
+    if (!shouldSignOut || !context.mounted) return;
+
+    await ref.read(authViewModelProvider.notifier).signOut();
+
+    if (!context.mounted) return;
+
+    Navigator.of(
+      context,
+      rootNavigator: true,
+    ).popUntil((route) => route.isFirst);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(authViewModelProvider).requireValue;
@@ -1136,7 +1178,7 @@ class ProfileScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 24),
           OutlinedButton.icon(
-            onPressed: () => ref.read(authViewModelProvider.notifier).signOut(),
+            onPressed: () => _requestSignOut(context, ref),
             icon: const Icon(Icons.logout),
             label: const Text('Cerrar sesión'),
           ),

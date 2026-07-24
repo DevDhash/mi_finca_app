@@ -14,6 +14,8 @@ import 'package:mi_finca_app/features/expenses/data/datasources/expense_local_da
 import 'package:mi_finca_app/features/expenses/data/datasources/expense_remote_datasource.dart';
 import 'package:mi_finca_app/features/expenses/data/repositories/expense_repository_impl.dart';
 import 'package:mi_finca_app/features/expenses/domain/entities/expense.dart';
+import 'package:mi_finca_app/features/farm/data/datasources/farm_local_datasource.dart';
+import 'package:mi_finca_app/features/farm/domain/entities/farm.dart';
 import 'package:mi_finca_app/features/sync/data/datasources/mock_sync_remote_datasource.dart';
 import 'package:mi_finca_app/features/sync/data/datasources/sync_local_datasource.dart';
 import 'package:mi_finca_app/features/sync/data/repositories/sync_repository_impl.dart';
@@ -36,7 +38,7 @@ void main() {
 
     authRepository = AuthRepositoryImpl(
       local: AuthLocalDataSource(database),
-      remote: SupabaseAuthDatasource(testSupabaseClient),
+      remote: _FakeAuthRemoteDataSource(testSupabaseClient),
     );
 
     animalRepository = AnimalRepositoryImpl(
@@ -97,6 +99,44 @@ void main() {
     expect(await syncRepository.pendingCount(), 0);
     expect(await syncRepository.lastSync(), isNotNull);
   });
+
+  test('sign out clears local user data and pending records', () async {
+    const session = UserSession(id: 'u1', name: 'Ana', email: 'ana@test.pe');
+    final now = DateTime(2026, 6, 19);
+    final farmLocalDataSource = FarmLocalDataSource(database);
+
+    await authRepository.saveSession(session);
+    await farmLocalDataSource.write(
+      const Farm(id: 'f1', name: 'Finca Norte', location: 'Junin'),
+    );
+    await animalRepository.save(
+      Animal(
+        id: 'a1',
+        code: 'V-001',
+        type: 'Vaca',
+        breed: 'Holstein',
+        sex: 'Hembra',
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+
+    expect(await syncRepository.pendingCount(), 1);
+
+    await authRepository.signOut();
+
+    expect(await authRepository.currentSession(), isNull);
+    expect(await farmLocalDataSource.read(), isNull);
+    expect(await animalRepository.getAll(), isEmpty);
+    expect(await syncRepository.pendingCount(), 0);
+  });
+}
+
+class _FakeAuthRemoteDataSource extends SupabaseAuthDatasource {
+  _FakeAuthRemoteDataSource(super.client);
+
+  @override
+  Future<void> signOut() async {}
 }
 
 class _FakeAnimalRemoteDataSource extends AnimalRemoteDataSource {

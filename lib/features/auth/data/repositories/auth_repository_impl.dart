@@ -90,7 +90,7 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<void> signOut() async {
     await _remote.signOut();
-    await _local.deleteSession();
+    await _local.clearSessionData();
   }
 
   UserSession _mapSupabaseUserToSession(User user) {
