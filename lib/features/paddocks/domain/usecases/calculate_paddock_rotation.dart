@@ -21,25 +21,102 @@ class CalculatePaddockRotation {
             animalCount: animals
                 .where((animal) => animal.paddockId == activePaddock.id)
                 .length,
+            grazingStartDate: activePaddock.grazingStartDate,
+            plannedGrazingDays: activePaddock.plannedGrazingDays,
+            elapsedGrazingDays: _elapsedGrazingDays(
+              activePaddock,
+              referenceDate,
+            ),
           );
 
-    final candidates =
-        paddocks
-            .where((paddock) => paddock.status != 'En uso')
-            .map(
-              (paddock) => NextPaddockRotation.fromPaddock(
-                paddock: paddock,
-                referenceDate: referenceDate,
-              ),
-            )
-            .whereType<NextPaddockRotation>()
-            .toList()
-          ..sort(_compareRotationCandidates);
+    final usesConfiguredOrder =
+        activePaddock != null &&
+        activePaddock.rotationOrder != null &&
+        paddocks.any(
+          (paddock) =>
+              paddock.status != 'En uso' &&
+              paddock.status != 'Agotado' &&
+              paddock.rotationOrder != null,
+        );
+
+    final nextByOrder = usesConfiguredOrder
+        ? _nextByConfiguredOrder(
+            paddocks: paddocks,
+            activePaddock: activePaddock,
+            referenceDate: referenceDate,
+          )
+        : null;
+
+    final candidates = !usesConfiguredOrder
+        ? _fallbackCandidates(paddocks, referenceDate)
+        : const <NextPaddockRotation>[];
 
     return PaddockRotationSummary(
       active: active,
-      next: candidates.isEmpty ? null : candidates.first,
+      next: nextByOrder ?? (candidates.isEmpty ? null : candidates.first),
     );
+  }
+
+  NextPaddockRotation? _nextByConfiguredOrder({
+    required List<Paddock> paddocks,
+    required Paddock activePaddock,
+    required DateTime referenceDate,
+  }) {
+    final activeOrder = activePaddock.rotationOrder;
+    if (activeOrder == null) return null;
+
+    final orderedPaddocks =
+        paddocks
+            .where(
+              (paddock) =>
+                  paddock.status != 'En uso' &&
+                  paddock.status != 'Agotado' &&
+                  paddock.rotationOrder != null,
+            )
+            .toList()
+          ..sort((a, b) => a.rotationOrder!.compareTo(b.rotationOrder!));
+
+    if (orderedPaddocks.isEmpty) return null;
+
+    final afterActive = orderedPaddocks.where(
+      (paddock) => paddock.rotationOrder! > activeOrder,
+    );
+    final orderedRoute = [
+      ...afterActive,
+      ...orderedPaddocks.where(
+        (paddock) => paddock.rotationOrder! <= activeOrder,
+      ),
+    ];
+
+    for (final paddock in orderedRoute) {
+      final next = NextPaddockRotation.fromPaddock(
+        paddock: paddock,
+        referenceDate: referenceDate,
+      );
+      if (next != null) return next;
+    }
+
+    return null;
+  }
+
+  List<NextPaddockRotation> _fallbackCandidates(
+    List<Paddock> paddocks,
+    DateTime referenceDate,
+  ) {
+    return paddocks
+        .where(
+          (paddock) =>
+              paddock.status != 'En uso' && paddock.status != 'Agotado',
+        )
+        .map(
+          (paddock) => NextPaddockRotation.fromPaddock(
+            paddock: paddock,
+            referenceDate: referenceDate,
+          ),
+        )
+        .whereType<NextPaddockRotation>()
+        .toList()
+      ..sort(_compareRotationCandidates);
   }
 
   int _compareRotationCandidates(NextPaddockRotation a, NextPaddockRotation b) {
@@ -72,10 +149,48 @@ class ActivePaddockRotation {
   const ActivePaddockRotation({
     required this.paddock,
     required this.animalCount,
+    required this.grazingStartDate,
+    required this.plannedGrazingDays,
+    required this.elapsedGrazingDays,
   });
 
   final Paddock paddock;
   final int animalCount;
+  final DateTime? grazingStartDate;
+  final int? plannedGrazingDays;
+  final int? elapsedGrazingDays;
+
+  int? get remainingGrazingDays {
+    final planned = plannedGrazingDays;
+    final elapsed = elapsedGrazingDays;
+    if (planned == null || elapsed == null) return null;
+
+    return planned - elapsed;
+  }
+
+  bool get hasGrazingPlan =>
+      grazingStartDate != null &&
+      plannedGrazingDays != null &&
+      plannedGrazingDays! > 0 &&
+      elapsedGrazingDays != null;
+
+  bool get isOverdue => (remainingGrazingDays ?? 1) < 0;
+  bool get isDueToday => remainingGrazingDays == 0;
+  bool get isDueSoon {
+    final remaining = remainingGrazingDays;
+    if (remaining == null) return false;
+
+    return remaining > 0 && remaining <= 2;
+  }
+}
+
+int? _elapsedGrazingDays(Paddock paddock, DateTime referenceDate) {
+  final grazingStartDate = paddock.grazingStartDate;
+  if (grazingStartDate == null || grazingStartDate.isAfter(referenceDate)) {
+    return null;
+  }
+
+  return referenceDate.difference(grazingStartDate).inDays;
 }
 
 class NextPaddockRotation {
@@ -92,11 +207,21 @@ class NextPaddockRotation {
   final int remainingRestDays;
 
   bool get isReady => remainingRestDays <= 0;
+  bool get hasRestRequirement => requiredRestDays > 0;
 
   static NextPaddockRotation? fromPaddock({
     required Paddock paddock,
     required DateTime referenceDate,
   }) {
+    if (paddock.status == 'Disponible') {
+      return NextPaddockRotation(
+        paddock: paddock,
+        requiredRestDays: paddock.requiredRestDays ?? 0,
+        elapsedRestDays: _elapsedRestDays(paddock, referenceDate) ?? 0,
+        remainingRestDays: 0,
+      );
+    }
+
     final requiredRestDays = paddock.requiredRestDays;
     final lastGrazingEndDate = paddock.lastGrazingEndDate;
 
@@ -115,5 +240,15 @@ class NextPaddockRotation {
       elapsedRestDays: elapsedRestDays,
       remainingRestDays: requiredRestDays - elapsedRestDays,
     );
+  }
+
+  static int? _elapsedRestDays(Paddock paddock, DateTime referenceDate) {
+    final lastGrazingEndDate = paddock.lastGrazingEndDate;
+    if (lastGrazingEndDate == null ||
+        lastGrazingEndDate.isAfter(referenceDate)) {
+      return null;
+    }
+
+    return referenceDate.difference(lastGrazingEndDate).inDays;
   }
 }

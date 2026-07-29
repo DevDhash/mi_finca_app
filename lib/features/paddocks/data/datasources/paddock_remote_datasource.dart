@@ -21,6 +21,9 @@ class PaddockRemoteDataSource {
       'area': paddock.areaHectares,
       'pasture_type': paddock.pastureType,
       'required_rest_days': paddock.requiredRestDays,
+      'rotation_order': paddock.rotationOrder,
+      'grazing_start_date': paddock.grazingStartDate?.toIso8601String(),
+      'planned_grazing_days': paddock.plannedGrazingDays,
       'status': paddock.status,
       'last_grazing_end_date': paddock.lastGrazingEndDate?.toIso8601String(),
       'created_at': paddock.createdAt.toIso8601String(),
@@ -38,7 +41,7 @@ class PaddockRemoteDataSource {
     final response = await _client
         .from('paddocks')
         .select(
-          'id, name, area, pasture_type, required_rest_days, status, last_grazing_end_date, created_at, updated_at',
+          'id, name, area, pasture_type, required_rest_days, rotation_order, grazing_start_date, planned_grazing_days, status, last_grazing_end_date, created_at, updated_at',
         )
         .eq('user_id', user.id)
         .isFilter('deleted_at', null)
@@ -52,6 +55,11 @@ class PaddockRemoteDataSource {
             areaHectares: (json['area'] as num?)?.toDouble() ?? 0,
             pastureType: json['pasture_type'] as String?,
             requiredRestDays: (json['required_rest_days'] as num?)?.toInt(),
+            rotationOrder: (json['rotation_order'] as num?)?.toInt(),
+            grazingStartDate: json['grazing_start_date'] == null
+                ? null
+                : DateTime.parse(json['grazing_start_date'] as String),
+            plannedGrazingDays: (json['planned_grazing_days'] as num?)?.toInt(),
             status: json['status'] as String? ?? 'Disponible',
             lastGrazingEndDate: json['last_grazing_end_date'] == null
                 ? null

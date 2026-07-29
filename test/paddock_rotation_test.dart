@@ -10,13 +10,20 @@ void main() {
 
   group('CalculatePaddockRotation', () {
     test('returns the active paddock with the real animal count', () {
-      final active = _paddock(id: 'p1', name: 'Norte', status: 'En uso');
+      final active = _paddock(
+        id: 'p1',
+        name: 'Norte',
+        status: 'En uso',
+        grazingStartDate: referenceDate.subtract(const Duration(days: 3)),
+        plannedGrazingDays: 7,
+      );
       final summary = calculate(
         paddocks: [
           active,
           _paddock(
             id: 'p2',
             name: 'Loma',
+            status: 'Descansando',
             requiredRestDays: 20,
             lastGrazingEndDate: referenceDate.subtract(const Duration(days: 8)),
           ),
@@ -32,6 +39,68 @@ void main() {
 
       expect(summary.active?.paddock.name, 'Norte');
       expect(summary.active?.animalCount, 2);
+      expect(summary.active?.elapsedGrazingDays, 3);
+      expect(summary.active?.remainingGrazingDays, 4);
+      expect(summary.active?.hasGrazingPlan, isTrue);
+      expect(summary.active?.isOverdue, isFalse);
+      expect(summary.active?.isDueSoon, isFalse);
+      expect(summary.active?.isDueToday, isFalse);
+    });
+
+    test('marks active grazing as overdue when planned days are exceeded', () {
+      final summary = calculate(
+        paddocks: [
+          _paddock(
+            id: 'p1',
+            name: 'Norte',
+            status: 'En uso',
+            grazingStartDate: referenceDate.subtract(const Duration(days: 9)),
+            plannedGrazingDays: 7,
+          ),
+        ],
+        animals: const [],
+        referenceDate: referenceDate,
+      );
+
+      expect(summary.active?.elapsedGrazingDays, 9);
+      expect(summary.active?.remainingGrazingDays, -2);
+      expect(summary.active?.isOverdue, isTrue);
+    });
+
+    test('marks active grazing as due soon and due today', () {
+      final dueSoon = calculate(
+        paddocks: [
+          _paddock(
+            id: 'p1',
+            name: 'Norte',
+            status: 'En uso',
+            grazingStartDate: referenceDate.subtract(const Duration(days: 5)),
+            plannedGrazingDays: 7,
+          ),
+        ],
+        animals: const [],
+        referenceDate: referenceDate,
+      );
+      final dueToday = calculate(
+        paddocks: [
+          _paddock(
+            id: 'p1',
+            name: 'Norte',
+            status: 'En uso',
+            grazingStartDate: referenceDate.subtract(const Duration(days: 7)),
+            plannedGrazingDays: 7,
+          ),
+        ],
+        animals: const [],
+        referenceDate: referenceDate,
+      );
+
+      expect(dueSoon.active?.remainingGrazingDays, 2);
+      expect(dueSoon.active?.isDueSoon, isTrue);
+      expect(dueSoon.active?.isDueToday, isFalse);
+      expect(dueToday.active?.remainingGrazingDays, 0);
+      expect(dueToday.active?.isDueSoon, isFalse);
+      expect(dueToday.active?.isDueToday, isTrue);
     });
 
     test('returns no active paddock when none is in use', () {
@@ -51,17 +120,28 @@ void main() {
       final summary = calculate(
         paddocks: [
           _paddock(id: 'p1', name: 'En uso', status: 'En uso'),
-          _paddock(id: 'p2', name: 'Sin descanso requerido'),
+          _paddock(
+            id: 'p2',
+            name: 'Sin descanso requerido',
+            status: 'Descansando',
+          ),
           _paddock(
             id: 'p3',
             name: 'Descanso cero',
+            status: 'Descansando',
             requiredRestDays: 0,
             lastGrazingEndDate: referenceDate.subtract(const Duration(days: 5)),
           ),
-          _paddock(id: 'p4', name: 'Sin fecha de salida', requiredRestDays: 20),
+          _paddock(
+            id: 'p4',
+            name: 'Sin fecha de salida',
+            status: 'Descansando',
+            requiredRestDays: 20,
+          ),
           _paddock(
             id: 'p5',
             name: 'Fecha futura',
+            status: 'Descansando',
             requiredRestDays: 20,
             lastGrazingEndDate: referenceDate.add(const Duration(days: 1)),
           ),
@@ -80,12 +160,14 @@ void main() {
           _paddock(
             id: 'p2',
             name: 'Loma',
+            status: 'Descansando',
             requiredRestDays: 20,
             lastGrazingEndDate: referenceDate.subtract(const Duration(days: 8)),
           ),
           _paddock(
             id: 'p3',
             name: 'Bajo',
+            status: 'Descansando',
             requiredRestDays: 45,
             lastGrazingEndDate: referenceDate.subtract(
               const Duration(days: 40),
@@ -109,6 +191,7 @@ void main() {
           _paddock(
             id: 'p2',
             name: 'Casi listo',
+            status: 'Descansando',
             requiredRestDays: 20,
             lastGrazingEndDate: referenceDate.subtract(
               const Duration(days: 19),
@@ -117,6 +200,7 @@ void main() {
           _paddock(
             id: 'p3',
             name: 'Listo',
+            status: 'Descansando',
             requiredRestDays: 30,
             lastGrazingEndDate: referenceDate.subtract(
               const Duration(days: 35),
@@ -139,6 +223,7 @@ void main() {
           _paddock(
             id: 'p2',
             name: 'Listo reciente',
+            status: 'Descansando',
             requiredRestDays: 30,
             lastGrazingEndDate: referenceDate.subtract(
               const Duration(days: 31),
@@ -147,6 +232,7 @@ void main() {
           _paddock(
             id: 'p3',
             name: 'Listo primero',
+            status: 'Descansando',
             requiredRestDays: 20,
             lastGrazingEndDate: referenceDate.subtract(
               const Duration(days: 35),
@@ -161,6 +247,92 @@ void main() {
       expect(summary.next?.elapsedRestDays, 35);
       expect(summary.next?.remainingRestDays, -15);
     });
+
+    test('uses the configured order after the active paddock', () {
+      final summary = calculate(
+        paddocks: [
+          _paddock(
+            id: 'p1',
+            name: 'Actual',
+            status: 'En uso',
+            rotationOrder: 1,
+          ),
+          _paddock(
+            id: 'p2',
+            name: 'Siguiente del orden',
+            status: 'Descansando',
+            rotationOrder: 2,
+            requiredRestDays: 30,
+            lastGrazingEndDate: referenceDate.subtract(
+              const Duration(days: 20),
+            ),
+          ),
+          _paddock(
+            id: 'p3',
+            name: 'Listo fuera de turno',
+            status: 'Descansando',
+            rotationOrder: 3,
+            requiredRestDays: 20,
+            lastGrazingEndDate: referenceDate.subtract(
+              const Duration(days: 30),
+            ),
+          ),
+        ],
+        animals: const [],
+        referenceDate: referenceDate,
+      );
+
+      expect(summary.next?.paddock.name, 'Siguiente del orden');
+      expect(summary.next?.remainingRestDays, 10);
+    });
+
+    test(
+      'wraps the configured order and treats available paddocks as ready',
+      () {
+        final summary = calculate(
+          paddocks: [
+            _paddock(id: 'p1', name: 'Primero', rotationOrder: 1),
+            _paddock(
+              id: 'p2',
+              name: 'Actual',
+              status: 'En uso',
+              rotationOrder: 2,
+            ),
+          ],
+          animals: const [],
+          referenceDate: referenceDate,
+        );
+
+        expect(summary.next?.paddock.name, 'Primero');
+        expect(summary.next?.remainingRestDays, 0);
+        expect(summary.next?.isReady, isTrue);
+        expect(summary.next?.hasRestRequirement, isFalse);
+      },
+    );
+
+    test('skips exhausted paddocks in the configured order', () {
+      final summary = calculate(
+        paddocks: [
+          _paddock(
+            id: 'p1',
+            name: 'Actual',
+            status: 'En uso',
+            rotationOrder: 1,
+          ),
+          _paddock(
+            id: 'p2',
+            name: 'Agotado',
+            status: 'Agotado',
+            rotationOrder: 2,
+          ),
+          _paddock(id: 'p3', name: 'Disponible', rotationOrder: 3),
+        ],
+        animals: const [],
+        referenceDate: referenceDate,
+      );
+
+      expect(summary.next?.paddock.name, 'Disponible');
+    });
   });
 
   group('PaddockModel', () {
@@ -171,6 +343,9 @@ void main() {
         'areaHectares': 4.5,
         'pastureType': 'Rye grass',
         'requiredRestDays': 30,
+        'rotationOrder': 2,
+        'grazingStartDate': '2026-07-10T00:00:00.000',
+        'plannedGrazingDays': 7,
         'status': 'Descansando',
         'lastGrazingEndDate': '2026-06-20T00:00:00.000',
         'createdAt': '2026-06-01T00:00:00.000',
@@ -190,6 +365,9 @@ void main() {
 
       expect(newPaddock.pastureType, 'Rye grass');
       expect(newPaddock.requiredRestDays, 30);
+      expect(newPaddock.rotationOrder, 2);
+      expect(newPaddock.grazingStartDate, DateTime(2026, 7, 10));
+      expect(newPaddock.plannedGrazingDays, 7);
       expect(newPaddock.lastGrazingEndDate, DateTime(2026, 6, 20));
       expect(legacyPaddock.pastureType, 'Kikuyo');
       expect(legacyPaddock.lastGrazingEndDate, DateTime(2026, 6, 25));
@@ -201,6 +379,9 @@ void main() {
         name: 'Norte',
         pastureType: 'Rye grass',
         requiredRestDays: 30,
+        rotationOrder: 2,
+        grazingStartDate: DateTime(2026, 7, 10),
+        plannedGrazingDays: 7,
         lastGrazingEndDate: DateTime(2026, 6, 20),
       );
 
@@ -209,6 +390,9 @@ void main() {
       expect(json['pastureType'], 'Rye grass');
       expect(json['grassType'], 'Rye grass');
       expect(json['requiredRestDays'], 30);
+      expect(json['rotationOrder'], 2);
+      expect(json['grazingStartDate'], '2026-07-10T00:00:00.000');
+      expect(json['plannedGrazingDays'], 7);
       expect(json['lastGrazingEndDate'], '2026-06-20T00:00:00.000');
       expect(json['lastUsedAt'], '2026-06-20T00:00:00.000');
     });
@@ -221,6 +405,9 @@ Paddock _paddock({
   String status = 'Disponible',
   String? pastureType = 'Rye grass',
   int? requiredRestDays,
+  int? rotationOrder,
+  DateTime? grazingStartDate,
+  int? plannedGrazingDays,
   DateTime? lastGrazingEndDate,
 }) {
   final now = DateTime(2026, 7, 1);
@@ -231,6 +418,9 @@ Paddock _paddock({
     areaHectares: 1,
     pastureType: pastureType,
     requiredRestDays: requiredRestDays,
+    rotationOrder: rotationOrder,
+    grazingStartDate: grazingStartDate,
+    plannedGrazingDays: plannedGrazingDays,
     status: status,
     lastGrazingEndDate: lastGrazingEndDate,
     createdAt: now,

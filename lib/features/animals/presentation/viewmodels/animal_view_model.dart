@@ -96,6 +96,41 @@ class AnimalViewModel extends AsyncNotifier<AnimalState> {
     unawaited(ref.read(syncViewModelProvider.notifier).syncPendingIfOnline());
   }
 
+  Future<int> moveMany(
+    List<Animal> selectedAnimals,
+    String destinationId,
+    DateTime date,
+  ) async {
+    final movableAnimals = selectedAnimals
+        .where((animal) => animal.paddockId != destinationId)
+        .toList();
+    if (movableAnimals.isEmpty) return 0;
+
+    final results = <({Animal animal, Movement movement})>[];
+    final moveAnimal = ref.read(moveAnimalProvider);
+
+    for (final animal in movableAnimals) {
+      results.add(await moveAnimal(animal, destinationId, date));
+    }
+
+    final movedById = {for (final result in results) result.animal.id: result};
+    final animals = state.requireValue.animals
+        .map((item) => movedById[item.id]?.animal ?? item)
+        .toList();
+    final movements = [
+      ...results.map((result) => result.movement),
+      ...state.requireValue.movements,
+    ];
+
+    state = AsyncData(
+      state.requireValue.copyWith(animals: animals, movements: movements),
+    );
+
+    unawaited(ref.read(syncViewModelProvider.notifier).syncPendingIfOnline());
+
+    return results.length;
+  }
+
   Future<void> reload() async {
     final repository = ref.read(animalRepositoryProvider);
 

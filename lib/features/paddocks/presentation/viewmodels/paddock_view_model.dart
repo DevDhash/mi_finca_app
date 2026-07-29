@@ -52,6 +52,7 @@ class PaddockViewModel extends AsyncNotifier<List<Paddock>> {
           areaHectares: current.areaHectares,
           pastureType: current.pastureType,
           requiredRestDays: current.requiredRestDays,
+          rotationOrder: current.rotationOrder,
           status: 'Descansando',
           lastGrazingEndDate: now,
           createdAt: current.createdAt,
@@ -74,6 +75,39 @@ class PaddockViewModel extends AsyncNotifier<List<Paddock>> {
     }
 
     state = AsyncData(items);
+
+    unawaited(ref.read(syncViewModelProvider.notifier).syncPendingIfOnline());
+  }
+
+  Future<void> updateRotationOrder(List<String> orderedPaddockIds) async {
+    final items = [...state.requireValue];
+    final now = DateTime.now();
+    final updatedById = <String, Paddock>{};
+
+    for (var i = 0; i < orderedPaddockIds.length; i++) {
+      final id = orderedPaddockIds[i];
+      Paddock? paddock;
+      for (final item in items) {
+        if (item.id == id) {
+          paddock = item;
+          break;
+        }
+      }
+
+      if (paddock == null) continue;
+
+      updatedById[id] = paddock.copyWith(rotationOrder: i + 1, updatedAt: now);
+    }
+
+    final updatedItems = items
+        .map((item) => updatedById[item.id] ?? item)
+        .toList();
+
+    state = AsyncData(updatedItems);
+
+    for (final paddock in updatedById.values) {
+      await ref.read(paddockRepositoryProvider).save(paddock);
+    }
 
     unawaited(ref.read(syncViewModelProvider.notifier).syncPendingIfOnline());
   }

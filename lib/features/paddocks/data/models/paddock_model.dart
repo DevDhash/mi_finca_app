@@ -10,6 +10,9 @@ abstract final class PaddockModel {
     // Nuevos nombres de dominio.
     'pastureType': v.pastureType,
     'requiredRestDays': v.requiredRestDays,
+    'rotationOrder': v.rotationOrder,
+    'grazingStartDate': v.grazingStartDate?.toIso8601String(),
+    'plannedGrazingDays': v.plannedGrazingDays,
     'lastGrazingEndDate': v.lastGrazingEndDate?.toIso8601String(),
 
     // Alias legacy locales para compatibilidad con datos/pantallas previas.
@@ -29,6 +32,11 @@ abstract final class PaddockModel {
     areaHectares: (j['areaHectares']! as num).toDouble(),
     pastureType: (j['pastureType'] ?? j['grassType']) as String?,
     requiredRestDays: (j['requiredRestDays'] as num?)?.toInt(),
+    rotationOrder: (j['rotationOrder'] as num?)?.toInt(),
+    grazingStartDate: j['grazingStartDate'] == null
+        ? null
+        : DateTime.parse(j['grazingStartDate']! as String),
+    plannedGrazingDays: (j['plannedGrazingDays'] as num?)?.toInt(),
     status: j['status'] as String? ?? 'Disponible',
     lastGrazingEndDate: (j['lastGrazingEndDate'] ?? j['lastUsedAt']) == null
         ? null

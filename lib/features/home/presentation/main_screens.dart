@@ -9,6 +9,7 @@ import 'package:mi_finca_app/features/auth/presentation/viewmodels/auth_view_mod
 import 'package:mi_finca_app/features/expenses/presentation/expense_screens.dart';
 import 'package:mi_finca_app/features/expenses/presentation/viewmodels/expense_view_model.dart';
 import 'package:mi_finca_app/features/farm/presentation/viewmodels/farm_view_model.dart';
+import 'package:mi_finca_app/features/paddocks/domain/entities/paddock.dart';
 import 'package:mi_finca_app/features/paddocks/presentation/screens/paddock_screens.dart';
 import 'package:mi_finca_app/features/paddocks/domain/usecases/calculate_paddock_rotation.dart';
 import 'package:mi_finca_app/features/paddocks/presentation/viewmodels/paddock_view_model.dart';
@@ -280,7 +281,7 @@ class DashboardScreen extends ConsumerWidget {
     );
 
     final availablePaddocks = paddocks
-        .where((p) => p.status == 'Disponible')
+        .where((p) => _isPaddockAvailableNow(p, referenceDate))
         .length;
 
     return Scaffold(
@@ -408,32 +409,9 @@ class DashboardScreen extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: 22),
-                _RotationDashboardCard(
-                  icon: Icons.pets,
-                  color: AppColors.primaryLight,
-                  iconColor: AppColors.primaryDark,
-                  title: rotation.active == null
-                      ? 'No hay un potrero en uso'
-                      : 'Potrero ${rotation.active!.paddock.name} se está usando',
-                  subtitle: rotation.active == null
-                      ? 'Asigna el ganado a un potrero para iniciar el pastoreo.'
-                      : 'Actualmente tiene ${rotation.active!.animalCount} animales.',
-                ),
-                const SizedBox(height: 12),
-                _RotationDashboardCard(
-                  icon: Icons.lightbulb_outline,
-                  color: const Color(0xFFFFF3D8),
-                  iconColor: AppColors.warning,
-                  title: rotation.next == null
-                      ? 'No hay una próxima rotación calculada'
-                      : rotation.next!.isReady
-                      ? 'Potrero ${rotation.next!.paddock.name} está listo para la rotación'
-                      : 'Potrero ${rotation.next!.paddock.name} estará listo en ${rotation.next!.remainingRestDays} días',
-                  subtitle: rotation.next == null
-                      ? 'Configura el tiempo de descanso de tus potreros.'
-                      : rotation.next!.isReady
-                      ? 'Cumplió sus ${rotation.next!.requiredRestDays} días de descanso.'
-                      : 'Será el próximo potrero disponible para la rotación.',
+                _PaddockStatusSection(
+                  rotation: rotation,
+                  availablePaddocksCount: availablePaddocks,
                 ),
 
                 const SizedBox(height: 100),
@@ -680,50 +658,352 @@ class _HomeActionCard extends StatelessWidget {
   );
 }
 
-class _RotationDashboardCard extends StatelessWidget {
-  const _RotationDashboardCard({
+class _PaddockStatusSection extends StatelessWidget {
+  const _PaddockStatusSection({
+    required this.rotation,
+    required this.availablePaddocksCount,
+  });
+
+  final PaddockRotationSummary rotation;
+  final int availablePaddocksCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = rotation.active;
+    final next = rotation.next;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Estado actual de potreros',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: AppColors.text,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Revisa dónde está el ganado y qué potrero usar después.',
+            style: TextStyle(color: AppColors.muted, fontSize: 13, height: 1.3),
+          ),
+          const SizedBox(height: 14),
+          _PaddockStatusCard(
+            icon: Icons.grass_outlined,
+            label: active == null ? 'Sin potrero activo' : 'En uso',
+            title: active == null
+                ? 'No hay un potrero en uso'
+                : active.paddock.name,
+            subtitle: active == null
+                ? 'Asigna el ganado a un potrero para iniciar el pastoreo.'
+                : _activePaddockStatusText(active),
+            color: AppColors.primaryLight,
+            iconColor: AppColors.primaryDark,
+          ),
+          if (active?.hasGrazingPlan == true &&
+              (active!.isOverdue || active.isDueToday || active.isDueSoon)) ...[
+            const SizedBox(height: 10),
+            _GrazingAlertCard(active: active),
+          ],
+          const SizedBox(height: 10),
+          _PaddockStatusCard(
+            icon: Icons.autorenew,
+            label: next == null ? 'Sin cálculo' : 'Próxima rotación',
+            title: next == null
+                ? 'No hay una próxima rotación calculada'
+                : next.isReady
+                ? 'Potrero ${next.paddock.name} está listo'
+                : 'Potrero ${next.paddock.name} estará listo en ${next.remainingRestDays} días',
+            subtitle: next == null
+                ? 'Configura el tiempo de descanso de tus potreros.'
+                : next.isReady
+                ? next.hasRestRequirement
+                      ? 'Cumplió sus ${next.requiredRestDays} días de descanso.'
+                      : 'Está disponible para recibir ganado.'
+                : 'Será el próximo potrero recomendado.',
+            color: const Color(0xFFFFF3D8),
+            iconColor: AppColors.warning,
+          ),
+          if (availablePaddocksCount > 0) ...[
+            const SizedBox(height: 10),
+            _PaddockStatusCard(
+              icon: Icons.check_circle_outline,
+              label: 'Disponibles ahora',
+              title: '$availablePaddocksCount potreros listos',
+              subtitle: availablePaddocksCount == 1
+                  ? 'Hay 1 potrero disponible para recibir ganado.'
+                  : 'Hay $availablePaddocksCount potreros disponibles para recibir ganado.',
+              color: const Color(0xFFF8FCF5),
+              iconColor: AppColors.primary,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PaddockStatusCard extends StatelessWidget {
+  const _PaddockStatusCard({
     required this.icon,
-    required this.color,
-    required this.iconColor,
+    required this.label,
     required this.title,
     required this.subtitle,
+    required this.color,
+    required this.iconColor,
   });
 
   final IconData icon;
-  final Color color;
-  final Color iconColor;
+  final String label;
   final String title;
   final String subtitle;
+  final Color color;
+  final Color iconColor;
 
   @override
-  Widget build(BuildContext context) => Card(
-    color: color,
-    elevation: 0,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-    child: ListTile(
-      contentPadding: const EdgeInsets.all(18),
-      leading: Container(
-        width: 42,
-        height: 42,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.62),
-          borderRadius: BorderRadius.circular(14),
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: color,
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(icon, color: iconColor),
         ),
-        child: Icon(icon, color: iconColor),
-      ),
-      title: Text(
-        title,
-        style: const TextStyle(
-          fontWeight: FontWeight.w800,
-          color: AppColors.text,
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: iconColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: AppColors.text,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  height: 1.2,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 13,
+                  height: 1.3,
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-      subtitle: Padding(
-        padding: const EdgeInsets.only(top: 4),
-        child: Text(subtitle),
-      ),
+      ],
     ),
   );
+}
+
+class _GrazingAlertCard extends StatefulWidget {
+  const _GrazingAlertCard({required this.active});
+
+  final ActivePaddockRotation active;
+
+  @override
+  State<_GrazingAlertCard> createState() => _GrazingAlertCardState();
+}
+
+class _GrazingAlertCardState extends State<_GrazingAlertCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _pulse = Tween<double>(
+      begin: 0.10,
+      end: 0.28,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+
+    if (widget.active.isOverdue) {
+      _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _GrazingAlertCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active.isOverdue && !_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    } else if (!widget.active.isOverdue && _controller.isAnimating) {
+      _controller.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final active = widget.active;
+    final isOverdue = active.isOverdue;
+    final color = isOverdue ? AppColors.danger : AppColors.warning;
+
+    return AnimatedBuilder(
+      animation: _pulse,
+      builder: (context, child) {
+        final borderAlpha = isOverdue ? _pulse.value : 0.28;
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: isOverdue
+                ? const Color(0xFFFDE7E4)
+                : const Color(0xFFFFF3D8),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: color.withValues(alpha: borderAlpha)),
+          ),
+          child: child,
+        );
+      },
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.72),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              isOverdue ? Icons.priority_high : Icons.warning_amber_rounded,
+              color: color,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _grazingAlertTitle(active),
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _grazingAlertBody(active),
+                  style: const TextStyle(
+                    color: AppColors.text,
+                    fontSize: 13,
+                    height: 1.3,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _activePaddockStatusText(ActivePaddockRotation active) {
+  final animalText = 'Actualmente tiene ${active.animalCount} animales.';
+  if (!active.hasGrazingPlan) return animalText;
+
+  final remainingDays = active.remainingGrazingDays!;
+  if (remainingDays < 0) {
+    return '$animalText Lleva ${active.elapsedGrazingDays} días en uso.';
+  }
+
+  if (remainingDays == 0) {
+    return '$animalText Termina su uso hoy.';
+  }
+
+  return '$animalText Faltan $remainingDays días de uso.';
+}
+
+String _grazingAlertTitle(ActivePaddockRotation active) {
+  if (active.isOverdue) return 'Traslado atrasado';
+  if (active.isDueToday) return 'Traslado para hoy';
+
+  return 'Rotación próxima';
+}
+
+String _grazingAlertBody(ActivePaddockRotation active) {
+  final remainingDays = active.remainingGrazingDays!;
+  if (remainingDays < 0) {
+    final overdueDays = remainingDays.abs();
+    return overdueDays == 1
+        ? 'El potrero superó el uso planeado por 1 día.'
+        : 'El potrero superó el uso planeado por $overdueDays días.';
+  }
+
+  if (remainingDays == 0) {
+    return 'El uso planeado termina hoy. Revisa el próximo potrero.';
+  }
+
+  return remainingDays == 1
+      ? 'Falta 1 día para mover el ganado.'
+      : 'Faltan $remainingDays días para mover el ganado.';
+}
+
+bool _isPaddockAvailableNow(Paddock paddock, DateTime referenceDate) {
+  if (paddock.status == 'Disponible') return true;
+  if (paddock.status != 'Descansando') return false;
+
+  final requiredRestDays = paddock.requiredRestDays;
+  final lastGrazingEndDate = paddock.lastGrazingEndDate;
+  if (requiredRestDays == null ||
+      requiredRestDays <= 0 ||
+      lastGrazingEndDate == null ||
+      lastGrazingEndDate.isAfter(referenceDate)) {
+    return false;
+  }
+
+  return requiredRestDays -
+          referenceDate.difference(lastGrazingEndDate).inDays <=
+      0;
 }
 
 class _Metric extends StatelessWidget {

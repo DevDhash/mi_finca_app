@@ -35,7 +35,23 @@ class _AnimalListScreenState extends ConsumerState<AnimalListScreen> {
         )
         .toList();
     return Scaffold(
-      appBar: AppBar(title: const Text('Animales')),
+      appBar: AppBar(
+        title: const Text('Animales'),
+        actions: [
+          IconButton(
+            onPressed: animals.isEmpty || paddocks.length < 2
+                ? null
+                : () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const MoveAnimalBatchScreen(),
+                    ),
+                  ),
+            icon: const Icon(Icons.group_work_outlined),
+            tooltip: 'Mover lote',
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(
@@ -633,8 +649,9 @@ class _MoveAnimalScreenState extends ConsumerState<MoveAnimalScreen> {
         .where((paddock) => paddock.id != animal.paddockId)
         .toList();
 
-    final safeDestination =
-        options.any((paddock) => paddock.id == destination) ? destination : null;
+    final safeDestination = options.any((paddock) => paddock.id == destination)
+        ? destination
+        : null;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Mover de potrero')),
@@ -706,5 +723,283 @@ class _MoveAnimalScreenState extends ConsumerState<MoveAnimalScreen> {
         ],
       ),
     );
+  }
+}
+
+class MoveAnimalBatchScreen extends ConsumerStatefulWidget {
+  const MoveAnimalBatchScreen({super.key});
+
+  @override
+  ConsumerState<MoveAnimalBatchScreen> createState() =>
+      _MoveAnimalBatchScreenState();
+}
+
+class _MoveAnimalBatchScreenState extends ConsumerState<MoveAnimalBatchScreen> {
+  final selectedAnimalIds = <String>{};
+  String? sourcePaddockId;
+  String? destinationPaddockId;
+  DateTime date = DateTime.now();
+
+  @override
+  Widget build(BuildContext context) {
+    final animalState = ref.watch(animalViewModelProvider).requireValue;
+    final paddocks = ref.watch(paddockViewModelProvider).requireValue;
+    final paddockById = {for (final paddock in paddocks) paddock.id: paddock};
+    final movableAnimals = animalState.animals
+        .where((animal) => animal.status == 'Activo')
+        .toList();
+    final visibleAnimals = movableAnimals.where((animal) {
+      return sourcePaddockId == null || animal.paddockId == sourcePaddockId;
+    }).toList();
+    final selectedAnimals = movableAnimals
+        .where((animal) => selectedAnimalIds.contains(animal.id))
+        .toList();
+    final destinationOptions = paddocks
+        .where((paddock) => paddock.id != sourcePaddockId)
+        .toList();
+    final safeDestination =
+        destinationOptions.any((paddock) => paddock.id == destinationPaddockId)
+        ? destinationPaddockId
+        : null;
+    final selectedMovableAnimals = selectedAnimals
+        .where((animal) => animal.paddockId != safeDestination)
+        .toList();
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Mover lote')),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                const Text(
+                  'Selecciona animales',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String?>(
+                  value: sourcePaddockId,
+                  decoration: const InputDecoration(
+                    labelText: 'Potrero origen',
+                  ),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('Todos los potreros'),
+                    ),
+                    ...paddocks.map(
+                      (paddock) => DropdownMenuItem<String?>(
+                        value: paddock.id,
+                        child: Text(paddock.name),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      sourcePaddockId = value;
+                      selectedAnimalIds.removeWhere((animalId) {
+                        final animal = movableAnimals.firstWhere(
+                          (item) => item.id == animalId,
+                        );
+
+                        return sourcePaddockId != null &&
+                            animal.paddockId != sourcePaddockId;
+                      });
+                      if (destinationPaddockId == sourcePaddockId) {
+                        destinationPaddockId = null;
+                      }
+                    });
+                  },
+                ),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<String>(
+                  value: safeDestination,
+                  decoration: const InputDecoration(
+                    labelText: 'Potrero destino',
+                  ),
+                  items: destinationOptions
+                      .map(
+                        (paddock) => DropdownMenuItem<String>(
+                          value: paddock.id,
+                          child: Text(paddock.name),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      destinationPaddockId = value;
+                      selectedAnimalIds.removeWhere((animalId) {
+                        final animal = movableAnimals.firstWhere(
+                          (item) => item.id == animalId,
+                        );
+
+                        return animal.paddockId == destinationPaddockId;
+                      });
+                    });
+                  },
+                ),
+                const SizedBox(height: 14),
+                ListTile(
+                  tileColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  title: const Text('Fecha del movimiento'),
+                  subtitle: Text('${date.day}/${date.month}/${date.year}'),
+                  trailing: const Icon(Icons.calendar_month),
+                  onTap: () async {
+                    final selectedDate = await showDatePicker(
+                      context: context,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now(),
+                      initialDate: date,
+                    );
+
+                    if (selectedDate != null) {
+                      setState(() => date = selectedDate);
+                    }
+                  },
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${selectedAnimalIds.length} seleccionados',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.text,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: visibleAnimals.isEmpty
+                          ? null
+                          : () => setState(() {
+                              final visibleIds = visibleAnimals.map(
+                                (animal) => animal.id,
+                              );
+                              final allVisibleSelected = visibleAnimals.every(
+                                (animal) =>
+                                    selectedAnimalIds.contains(animal.id),
+                              );
+
+                              if (allVisibleSelected) {
+                                selectedAnimalIds.removeAll(visibleIds);
+                              } else {
+                                selectedAnimalIds.addAll(visibleIds);
+                              }
+                            }),
+                      child: Text(
+                        visibleAnimals.every(
+                              (animal) => selectedAnimalIds.contains(animal.id),
+                            )
+                            ? 'Limpiar'
+                            : 'Seleccionar todos',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (visibleAnimals.isEmpty)
+                  const Card(
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text('No hay animales activos en este origen.'),
+                    ),
+                  )
+                else
+                  ...visibleAnimals.map((animal) {
+                    final paddockName =
+                        paddockById[animal.paddockId]?.name ?? 'Sin potrero';
+                    final isSelected = selectedAnimalIds.contains(animal.id);
+                    final isAlreadyInDestination =
+                        animal.paddockId == safeDestination;
+
+                    return Card(
+                      child: CheckboxListTile(
+                        value: isSelected,
+                        onChanged: isAlreadyInDestination
+                            ? null
+                            : (value) {
+                                setState(() {
+                                  if (value == true) {
+                                    selectedAnimalIds.add(animal.id);
+                                  } else {
+                                    selectedAnimalIds.remove(animal.id);
+                                  }
+                                });
+                              },
+                        title: Text(
+                          animal.displayName,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        subtitle: Text('${animal.code} · $paddockName'),
+                        secondary: CircleAvatar(
+                          backgroundColor: AppColors.primaryLight,
+                          backgroundImage: animal.photoPath == null
+                              ? null
+                              : FileImage(File(animal.photoPath!)),
+                          child: animal.photoPath == null
+                              ? const Icon(
+                                  Icons.pets,
+                                  color: AppColors.primaryDark,
+                                )
+                              : null,
+                        ),
+                        controlAffinity: ListTileControlAffinity.trailing,
+                      ),
+                    );
+                  }),
+              ],
+            ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: FilledButton.icon(
+                onPressed:
+                    safeDestination == null || selectedMovableAnimals.isEmpty
+                    ? null
+                    : () => _confirmMove(context, selectedMovableAnimals),
+                icon: const Icon(Icons.swap_horiz),
+                label: Text(
+                  selectedMovableAnimals.length == 1
+                      ? 'Mover 1 animal'
+                      : 'Mover ${selectedMovableAnimals.length} animales',
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmMove(
+    BuildContext context,
+    List<Animal> selectedAnimals,
+  ) async {
+    final destination = destinationPaddockId;
+    if (destination == null) return;
+
+    final movedCount = await ref
+        .read(animalViewModelProvider.notifier)
+        .moveMany(selectedAnimals, destination, date);
+
+    if (context.mounted) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            movedCount == 1
+                ? '✓ 1 animal movido'
+                : '✓ $movedCount animales movidos',
+          ),
+        ),
+      );
+    }
   }
 }

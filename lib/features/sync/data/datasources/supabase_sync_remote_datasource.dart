@@ -45,6 +45,9 @@ class SupabaseSyncRemoteDataSource implements SyncRemoteDataSource {
       'area': payload['areaHectares'],
       'pasture_type': payload['pastureType'] ?? payload['grassType'],
       'required_rest_days': payload['requiredRestDays'],
+      'rotation_order': payload['rotationOrder'],
+      'grazing_start_date': payload['grazingStartDate'],
+      'planned_grazing_days': payload['plannedGrazingDays'],
       'status': payload['status'],
       'last_grazing_end_date':
           payload['lastGrazingEndDate'] ?? payload['lastUsedAt'],
