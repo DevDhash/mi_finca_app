@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mi_finca_app/app/theme/app_theme.dart';
 import 'package:mi_finca_app/core/constants/app_images.dart';
@@ -186,19 +187,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           ),
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 28,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 460),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _LogoHeader(
-                      title: title,
-                      subtitle: subtitle,
-                    ),
+                    _LogoHeader(title: title, subtitle: subtitle),
                     const SizedBox(height: 24),
                     Form(
                       key: _formKey,
@@ -254,10 +249,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 }
 
 class _LogoHeader extends StatelessWidget {
-  const _LogoHeader({
-    required this.title,
-    required this.subtitle,
-  });
+  const _LogoHeader({required this.title, required this.subtitle});
 
   final String title;
   final String subtitle;
@@ -408,9 +400,7 @@ class _AuthPanel extends StatelessWidget {
                 return 'Ingresa tu correo electrónico.';
               }
 
-              final emailRegex = RegExp(
-                r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-              );
+              final emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
               if (!emailRegex.hasMatch(cleanValue)) {
                 return 'Ingresa un correo válido.';
@@ -422,9 +412,7 @@ class _AuthPanel extends StatelessWidget {
           const SizedBox(height: 14),
           TextFormField(
             key: ValueKey(
-              create
-                  ? 'signup_password_field'
-                  : 'login_password_field',
+              create ? 'signup_password_field' : 'login_password_field',
             ),
             controller: password,
             obscureText: obscurePassword,
@@ -437,23 +425,24 @@ class _AuthPanel extends StatelessWidget {
                 onSubmit();
               }
             },
-            decoration: _inputDecoration(
-              label: 'Contraseña',
-              icon: Icons.lock_outline,
-            ).copyWith(
-              suffixIcon: IconButton(
-                onPressed: busy ? null : onTogglePassword,
-                tooltip: obscurePassword
-                    ? 'Mostrar contraseña'
-                    : 'Ocultar contraseña',
-                icon: Icon(
-                  obscurePassword
-                      ? Icons.visibility_off_outlined
-                      : Icons.visibility_outlined,
-                  color: AppColors.primaryDark.withValues(alpha: 0.64),
+            decoration:
+                _inputDecoration(
+                  label: 'Contraseña',
+                  icon: Icons.lock_outline,
+                ).copyWith(
+                  suffixIcon: IconButton(
+                    onPressed: busy ? null : onTogglePassword,
+                    tooltip: obscurePassword
+                        ? 'Mostrar contraseña'
+                        : 'Ocultar contraseña',
+                    icon: Icon(
+                      obscurePassword
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      color: AppColors.primaryDark.withValues(alpha: 0.64),
+                    ),
+                  ),
                 ),
-              ),
-            ),
             validator: (value) {
               if (value == null || value.isEmpty) {
                 return 'Ingresa tu contraseña.';
@@ -470,10 +459,7 @@ class _AuthPanel extends StatelessWidget {
             const SizedBox(height: 14),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 12,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 color: AppColors.danger.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(16),
@@ -512,8 +498,9 @@ class _AuthPanel extends StatelessWidget {
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.primaryDark,
                 foregroundColor: Colors.white,
-                disabledBackgroundColor:
-                    AppColors.primaryDark.withValues(alpha: 0.55),
+                disabledBackgroundColor: AppColors.primaryDark.withValues(
+                  alpha: 0.55,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
                 ),
@@ -551,10 +538,7 @@ class _AuthPanel extends StatelessWidget {
       prefixIcon: Icon(icon),
       filled: true,
       fillColor: AppColors.primaryLight.withValues(alpha: 0.34),
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 18,
-      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       labelStyle: TextStyle(
         color: AppColors.primaryDark.withValues(alpha: 0.72),
         fontWeight: FontWeight.w600,
@@ -572,24 +556,15 @@ class _AuthPanel extends StatelessWidget {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(
-          color: AppColors.primaryDark,
-          width: 1.5,
-        ),
+        borderSide: const BorderSide(color: AppColors.primaryDark, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(
-          color: AppColors.danger,
-          width: 1.1,
-        ),
+        borderSide: const BorderSide(color: AppColors.danger, width: 1.1),
       ),
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(
-          color: AppColors.danger,
-          width: 1.5,
-        ),
+        borderSide: const BorderSide(color: AppColors.danger, width: 1.5),
       ),
     );
   }
@@ -599,15 +574,14 @@ class FarmSetupScreen extends ConsumerStatefulWidget {
   const FarmSetupScreen({super.key});
 
   @override
-  ConsumerState<FarmSetupScreen> createState() =>
-      _FarmSetupScreenState();
+  ConsumerState<FarmSetupScreen> createState() => _FarmSetupScreenState();
 }
 
-class _FarmSetupScreenState
-    extends ConsumerState<FarmSetupScreen> {
+class _FarmSetupScreenState extends ConsumerState<FarmSetupScreen> {
   final name = TextEditingController();
   final location = TextEditingController();
   final paddock = TextEditingController();
+  final restDays = TextEditingController(text: '30');
   final formKey = GlobalKey<FormState>();
 
   @override
@@ -615,44 +589,51 @@ class _FarmSetupScreenState
     name.dispose();
     location.dispose();
     paddock.dispose();
+    restDays.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Configura tu finca'),
-      ),
-      body: Form(
+  backgroundColor: const Color(0xFFFBF8F0),
+  body: SafeArea(
+    child: Form(
         key: formKey,
         child: ListView(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
           children: [
-            const Icon(
-              Icons.landscape,
-              size: 72,
-              color: AppColors.primary,
+            Center(
+              child: Image.asset(
+                AppImages.donFincaBanner,
+                height: 150,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.high,
+                errorBuilder: (_, __, ___) => const Icon(
+                  Icons.agriculture,
+                  size: 72,
+                  color: AppColors.primary,
+                ),
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
             const Text(
-              'Empecemos por lo esencial',
+              '¡Configuremos tu finca!',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 28,
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w900,
+                color: AppColors.text,
+                letterSpacing: -0.4,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Podrás cambiar estos datos más adelante.',
-              style: TextStyle(
-                fontSize: 16,
-                color: AppColors.muted,
-              ),
-            ),
+          
             const SizedBox(height: 24),
             TextFormField(
               controller: name,
+              textInputAction: TextInputAction.next,
+              textCapitalization: TextCapitalization.words,
               decoration: const InputDecoration(
                 labelText: 'Nombre de la finca',
               ),
@@ -661,36 +642,64 @@ class _FarmSetupScreenState
             const SizedBox(height: 14),
             TextFormField(
               controller: location,
-              decoration: const InputDecoration(
-                labelText: 'Ubicación',
-              ),
+              textInputAction: TextInputAction.next,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(labelText: 'Ubicación'),
               validator: _requiredValidator,
             ),
             const SizedBox(height: 14),
             TextFormField(
               controller: paddock,
+              textInputAction: TextInputAction.next,
+              textCapitalization: TextCapitalization.words,
               decoration: const InputDecoration(
                 labelText: 'Nombre del primer potrero',
                 hintText: 'Ejemplo: Potrero Norte',
               ),
+              validator: _requiredValidator,
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: restDays,
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.done,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: const InputDecoration(
+                labelText: 'Descanso requerido del primer potrero',
+                suffixText: 'días',
+                helperText:
+                    'Podrás cambiar este valor más adelante desde Potreros.',
+                helperMaxLines: 2,
+              ),
+              validator: _positiveIntegerValidator,
             ),
             const SizedBox(height: 24),
-            FilledButton(
-              onPressed: () async {
-                if (!formKey.currentState!.validate()) return;
+            SizedBox(
+              height: 56,
+              child: FilledButton(
+                onPressed: () async {
+                  if (!formKey.currentState!.validate()) return;
 
-                await ref
-                    .read(onboardingViewModelProvider.notifier)
-                    .configure(
-                      name.text.trim(),
-                      location.text.trim(),
-                      paddock.text.trim(),
-                    );
-              },
-              child: const Text('Guardar y comenzar'),
+                  FocusScope.of(context).unfocus();
+
+                  await ref
+                      .read(onboardingViewModelProvider.notifier)
+                      .configure(
+                        name.text.trim(),
+                        location.text.trim(),
+                        paddock.text.trim(),
+                        int.parse(restDays.text.trim()),
+                      );
+                },
+                child: const Text(
+                  'Guardar y comenzar',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+              ),
             ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -698,6 +707,16 @@ class _FarmSetupScreenState
   String? _requiredValidator(String? value) {
     if (value == null || value.trim().isEmpty) {
       return 'Este dato es necesario';
+    }
+
+    return null;
+  }
+
+  String? _positiveIntegerValidator(String? value) {
+    final restDays = int.tryParse(value?.trim() ?? '');
+
+    if (restDays == null || restDays <= 0) {
+      return 'Ingresa un número entero mayor a cero';
     }
 
     return null;

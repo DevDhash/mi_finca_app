@@ -9,7 +9,12 @@ class ConfigureFarm {
   final FarmRepository _farmRepository;
   final PaddockRepository _paddockRepository;
 
-  Future<Farm> call(String name, String location, String firstPaddock) async {
+  Future<Farm> call(
+    String name,
+    String location,
+    String firstPaddock,
+    int firstPaddockRestDays,
+  ) async {
     final farm = Farm(
       id: const Uuid().v4(),
       name: name.trim(),
@@ -24,7 +29,7 @@ class ConfigureFarm {
           name: firstPaddock.trim(),
           areaHectares: 1,
           pastureType: 'Por definir',
-          requiredRestDays: 30,
+          requiredRestDays: firstPaddockRestDays,
           status: 'En uso',
           createdAt: now,
           updatedAt: now,

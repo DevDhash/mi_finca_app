@@ -1,4 +1,4 @@
- class AppImages {
+class AppImages {
   const AppImages._();
 
   // Branding / Splash
@@ -8,6 +8,7 @@
   static const String donFincaWelcome = 'assets/images/don_finca_welcome.png';
   static const String donFincaApunta = 'assets/images/don_finca_apunta.png';
   static const String donFincaRecuerda = 'assets/images/don_finca_recuerda.png';
+  static const String donFincaBanner = 'assets/images/don_finca_banner.png';
 
   // Iconografía Mi Finca
   static const String iconCabezaToro = 'assets/images/icon_cabeza_toro.png';
@@ -18,7 +19,8 @@
   static const String iconToro = 'assets/images/icon_toro.png';
   static const String iconVaca = 'assets/images/icon_vaca.png';
   static const String iconVacuna = 'assets/images/icon_vacuna.png';
+  static const String iconMovimientoGanado =
+      'assets/images/icon_movimiento_ganado.png';
 
-  static const String miFincaIcono ='assets/images/mi_finca_icono.png';
-  static const String iconMovimientoGanado ='assets/images/icon_movimiento_ganado.png';
+  static const String miFincaIcono = 'assets/images/mi_finca_icono.png';
 }

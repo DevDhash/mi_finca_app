@@ -35,12 +35,14 @@ class OnboardingViewModel extends AsyncNotifier<void> {
     String name,
     String location,
     String firstPaddock,
+    int firstPaddockRestDays,
   ) async {
     state = const AsyncLoading();
     final farm = await ref.read(configureFarmProvider)(
       name,
       location,
       firstPaddock,
+      firstPaddockRestDays,
     );
     ref.read(farmViewModelProvider.notifier).setCurrent(farm);
     ref.invalidate(paddockViewModelProvider);
