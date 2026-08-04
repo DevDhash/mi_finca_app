@@ -284,6 +284,14 @@ class DashboardScreen extends ConsumerWidget {
         .where((p) => _isPaddockAvailableNow(p, referenceDate))
         .length;
 
+    final activeRotation = rotation.active;
+
+    final hasGrazingAlert =
+        activeRotation?.hasGrazingPlan == true &&
+        (activeRotation!.isOverdue ||
+            activeRotation.isDueToday ||
+            activeRotation.isDueSoon);
+
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8F2),
       body: ListView(
@@ -409,10 +417,17 @@ class DashboardScreen extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: 22),
+
                 _PaddockStatusSection(
                   rotation: rotation,
                   availablePaddocksCount: availablePaddocks,
+                  totalPaddocksCount: paddocks.length,
                 ),
+
+                if (hasGrazingAlert) ...[
+                  const SizedBox(height: 14),
+                  _GrazingAlertCard(active: activeRotation),
+                ],
 
                 const SizedBox(height: 100),
               ],
@@ -662,19 +677,20 @@ class _PaddockStatusSection extends StatelessWidget {
   const _PaddockStatusSection({
     required this.rotation,
     required this.availablePaddocksCount,
+    required this.totalPaddocksCount,
   });
 
   final PaddockRotationSummary rotation;
   final int availablePaddocksCount;
+  final int totalPaddocksCount;
 
   @override
   Widget build(BuildContext context) {
     final active = rotation.active;
     final next = rotation.next;
-
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -696,115 +712,100 @@ class _PaddockStatusSection extends StatelessWidget {
             'Revisa dónde está el ganado y qué potrero usar después.',
             style: TextStyle(color: AppColors.muted, fontSize: 13, height: 1.3),
           ),
-          const SizedBox(height: 14),
-          _PaddockStatusCard(
+          const SizedBox(height: 12),
+          _PaddockStatusRow(
             icon: Icons.grass_outlined,
-            label: active == null ? 'Sin potrero activo' : 'En uso',
-            title: active == null
-                ? 'No hay un potrero en uso'
-                : active.paddock.name,
-            subtitle: active == null
-                ? 'Asigna el ganado a un potrero para iniciar el pastoreo.'
+            label: 'Ahora',
+            title: active == null ? 'Sin potrero activo' : active.paddock.name,
+            detail: active == null
+                ? 'Asigna ganado'
                 : _activePaddockStatusText(active),
-            color: AppColors.primaryLight,
-            iconColor: AppColors.primaryDark,
+            color: AppColors.primaryDark,
           ),
-          if (active?.hasGrazingPlan == true &&
-              (active!.isOverdue || active.isDueToday || active.isDueSoon)) ...[
-            const SizedBox(height: 10),
-            _GrazingAlertCard(active: active),
-          ],
-          const SizedBox(height: 10),
-          _PaddockStatusCard(
+          const Divider(height: 18),
+          _PaddockStatusRow(
             icon: Icons.autorenew,
-            label: next == null ? 'Sin cálculo' : 'Próxima rotación',
+            label: 'Siguiente',
             title: next == null
-                ? 'No hay una próxima rotación calculada'
+                ? 'Sin cálculo'
                 : next.isReady
-                ? 'Potrero ${next.paddock.name} está listo'
-                : 'Potrero ${next.paddock.name} estará listo en ${next.remainingRestDays} días',
-            subtitle: next == null
-                ? 'Configura el tiempo de descanso de tus potreros.'
+                ? next.paddock.name
+                : '${next.paddock.name} en ${next.remainingRestDays} días',
+            detail: next == null
+                ? 'Configura descansos'
                 : next.isReady
-                ? next.hasRestRequirement
-                      ? 'Cumplió sus ${next.requiredRestDays} días de descanso.'
-                      : 'Está disponible para recibir ganado.'
-                : 'Será el próximo potrero recomendado.',
-            color: const Color(0xFFFFF3D8),
-            iconColor: AppColors.warning,
+                ? 'Listo para mover ganado'
+                : 'Próximo recomendado',
+            color: next?.isReady == true
+                ? AppColors.primary
+                : AppColors.warning,
           ),
-          if (availablePaddocksCount > 0) ...[
-            const SizedBox(height: 10),
-            _PaddockStatusCard(
-              icon: Icons.check_circle_outline,
-              label: 'Disponibles ahora',
-              title: '$availablePaddocksCount potreros listos',
-              subtitle: availablePaddocksCount == 1
-                  ? 'Hay 1 potrero disponible para recibir ganado.'
-                  : 'Hay $availablePaddocksCount potreros disponibles para recibir ganado.',
-              color: const Color(0xFFF8FCF5),
-              iconColor: AppColors.primary,
-            ),
-          ],
+          const Divider(height: 18),
+          _PaddockStatusRow(
+            icon: Icons.check_circle_outline,
+            label: 'Listos',
+            title: '$availablePaddocksCount/$totalPaddocksCount potreros',
+            detail: availablePaddocksCount == 1
+                ? '1 potrero disponible'
+                : '$availablePaddocksCount potreros disponibles',
+            color: AppColors.primary,
+          ),
         ],
       ),
     );
   }
 }
 
-class _PaddockStatusCard extends StatelessWidget {
-  const _PaddockStatusCard({
+class _PaddockStatusRow extends StatelessWidget {
+  const _PaddockStatusRow({
     required this.icon,
     required this.label,
     required this.title,
-    required this.subtitle,
     required this.color,
-    required this.iconColor,
+    required this.detail,
   });
 
   final IconData icon;
   final String label;
   final String title;
-  final String subtitle;
   final Color color;
-  final Color iconColor;
+  final String detail;
 
   @override
   Widget build(BuildContext context) => Container(
     width: double.infinity,
-    padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color: color,
-      borderRadius: BorderRadius.circular(16),
-    ),
+    constraints: const BoxConstraints(minHeight: 54),
     child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          width: 42,
-          height: 42,
+          width: 38,
+          height: 38,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(14),
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(icon, color: iconColor),
+          child: Icon(icon, color: color, size: 21),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 10),
+        SizedBox(
+          width: 74,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                label,
-                style: TextStyle(
-                  color: iconColor,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
                 title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: AppColors.text,
                   fontSize: 16,
@@ -812,9 +813,11 @@ class _PaddockStatusCard extends StatelessWidget {
                   height: 1.2,
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               Text(
-                subtitle,
+                detail,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: AppColors.muted,
                   fontSize: 13,

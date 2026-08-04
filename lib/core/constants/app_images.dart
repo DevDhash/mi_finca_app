@@ -23,4 +23,6 @@ class AppImages {
       'assets/images/icon_movimiento_ganado.png';
 
   static const String miFincaIcono = 'assets/images/mi_finca_icono.png';
+  static const String bannerRotacionPotreros = 'assets/images/banner_rotacion_potreros.png';
+  static const String iconOrdenRotacion = 'assets/images/icon_orden_rotacion.png';
 }

@@ -1,43 +1,44 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mi_finca_app/app/theme/app_theme.dart';
+import 'package:mi_finca_app/core/constants/app_images.dart';
 import 'package:mi_finca_app/core/widgets/common_widgets.dart';
 import 'package:mi_finca_app/features/animals/presentation/viewmodels/animal_view_model.dart';
 import 'package:mi_finca_app/features/paddocks/domain/entities/paddock.dart';
-import 'package:mi_finca_app/features/paddocks/domain/usecases/calculate_paddock_rotation.dart';
 import 'package:mi_finca_app/features/paddocks/presentation/viewmodels/paddock_view_model.dart';
 import 'package:uuid/uuid.dart';
 
 class PaddockListScreen extends ConsumerWidget {
   const PaddockListScreen({super.key});
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final paddocks = ref.watch(paddockViewModelProvider).requireValue;
     final animals = ref.watch(animalViewModelProvider).requireValue.animals;
     final referenceDate = DateTime.now();
+    final orderedPaddocks = _sortPaddocksByRotationOrder(paddocks);
+
+    final activeCount = paddocks.where((p) => p.status == 'En uso').length;
+
+    final readyCount = paddocks
+        .where(
+          (p) =>
+              _paddockDisplayStatus(p, _paddockRestStatus(p, referenceDate)) ==
+              'Disponible',
+        )
+        .length;
+
+    final orderedCount = paddocks.where((p) => p.rotationOrder != null).length;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Potreros'),
-        actions: [
-          IconButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const PaddockRotationOrderScreen(),
-              ),
-            ),
-            icon: const Icon(Icons.reorder),
-            tooltip: 'Orden de rotación',
-          ),
-          IconButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const RotationScreen()),
-            ),
-            icon: const Icon(Icons.timeline),
-            tooltip: 'Rotación',
-          ),
-        ],
+        centerTitle: true,
+
+        title: const Text(
+          'Potreros',
+
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
       ),
       body: paddocks.isEmpty
           ? EmptyState(
@@ -47,56 +48,423 @@ class PaddockListScreen extends ConsumerWidget {
               actionLabel: 'Agregar potrero',
               onAction: () => openPaddockForm(context),
             )
-          : ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: paddocks.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 12),
-              itemBuilder: (_, i) {
-                final p = paddocks[i];
-                final count = animals.where((a) => a.paddockId == p.id).length;
-                final restStatus = _paddockRestStatus(p, referenceDate);
-                final restSummary = _paddockRestSummary(p, restStatus);
-                return Card(
-                  child: ListTile(
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => PaddockDetailScreen(paddockId: p.id),
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+              children: [
+                const _PaddockRotationBanner(),
+                const SizedBox(height: 16),
+                _PaddockOrderOverview(
+                  totalCount: paddocks.length,
+                  orderedCount: orderedCount,
+                  activeCount: activeCount,
+                  readyCount: readyCount,
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Ruta de rotación',
+                        style: TextStyle(
+                          color: AppColors.text,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
-                    contentPadding: const EdgeInsets.all(16),
-                    title: Row(
+                    TextButton.icon(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const PaddockRotationOrderScreen(),
+                        ),
+                      ),
+                      icon: const Icon(Icons.reorder_rounded, size: 18),
+                      label: const Text('Ordenar'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.primaryDark,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                        textStyle: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  'Consulta el orden de recorrido del ganado y selecciona un potrero para ver su configuración.',
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 13,
+                    height: 1.3,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ...orderedPaddocks.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final paddock = entry.value;
+
+                  final animalCount = animals
+                      .where((animal) => animal.paddockId == paddock.id)
+                      .length;
+
+                  final restStatus = _paddockRestStatus(paddock, referenceDate);
+
+                  final restSummary = _paddockRestSummary(paddock, restStatus);
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _PaddockRouteCard(
+                      paddock: paddock,
+                      orderIndex: index,
+                      animalCount: animalCount,
+                      displayStatus: _paddockDisplayStatus(paddock, restStatus),
+                      restSummary: restSummary,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              PaddockDetailScreen(paddockId: paddock.id),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+    );
+  }
+}
+
+class _PaddockRotationBanner extends StatelessWidget {
+  const _PaddockRotationBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      image: true,
+      label: 'Ganado pastoreando en una ruta de rotación de potreros',
+      child: Container(
+        width: double.infinity,
+        height: 155,
+        decoration: BoxDecoration(
+          color: AppColors.primaryLight,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: AppColors.border),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 14,
+              offset: const Offset(0, 7),
+            ),
+          ],
+          image: const DecorationImage(
+            image: AssetImage(AppImages.bannerRotacionPotreros),
+            fit: BoxFit.cover,
+            alignment: Alignment.center,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PaddockOrderOverview extends StatelessWidget {
+  const _PaddockOrderOverview({
+    required this.totalCount,
+    required this.orderedCount,
+    required this.activeCount,
+    required this.readyCount,
+  });
+
+  final int totalCount;
+  final int orderedCount;
+  final int activeCount;
+  final int readyCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final orderText = orderedCount == totalCount
+        ? 'Revisa el estado general de tus potreros'
+        : '$orderedCount de $totalCount potreros tienen orden';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Estado de potreros',
+            style: const TextStyle(
+              color: AppColors.text,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            orderText,
+            style: const TextStyle(color: AppColors.muted, fontSize: 13),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _PaddockOverviewItem(
+                  value: '$activeCount',
+                  label: 'En uso',
+                  color: AppColors.info,
+                ),
+              ),
+              Expanded(
+                child: _PaddockOverviewItem(
+                  value: '$readyCount',
+                  label: 'Listos',
+                  color: AppColors.primary,
+                ),
+              ),
+              Expanded(
+                child: _PaddockOverviewItem(
+                  value: '$totalCount',
+                  label: 'Total',
+                  color: AppColors.earth,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PaddockOverviewItem extends StatelessWidget {
+  const _PaddockOverviewItem({
+    required this.value,
+    required this.label,
+    required this.color,
+  });
+
+  final String value;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          value,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: color,
+            fontSize: 28,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: AppColors.muted,
+            fontSize: 12,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PaddockRouteCard extends StatelessWidget {
+  const _PaddockRouteCard({
+    required this.paddock,
+    required this.orderIndex,
+    required this.animalCount,
+    required this.displayStatus,
+    required this.restSummary,
+    required this.onTap,
+  });
+
+  final Paddock paddock;
+  final int orderIndex;
+  final int animalCount;
+  final String displayStatus;
+  final String restSummary;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasOrder = paddock.rotationOrder != null;
+
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: hasOrder
+                      ? AppColors.primaryDark
+                      : const Color(0xFFEFEDE8),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  hasOrder ? '${orderIndex + 1}' : '-',
+                  style: TextStyle(
+                    color: hasOrder ? Colors.white : AppColors.muted,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
                         Expanded(
                           child: Text(
-                            p.name,
+                            paddock.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                              color: AppColors.text,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
                         ),
-                        StatusChip(_paddockDisplayStatus(p, restStatus)),
+                        const SizedBox(width: 8),
+                        StatusChip(displayStatus),
                       ],
                     ),
-                    subtitle: Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        [
-                          '${p.areaHectares} ha',
-                          '$count animales',
-                          if (p.grassType.isNotEmpty) p.grassType,
-                          if (p.rotationOrder != null)
-                            'Orden ${p.rotationOrder}',
-                          if (restSummary.isNotEmpty) restSummary,
-                        ].join(' · '),
-                      ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 5,
+                      children: [
+                        _PaddockFact(
+                          icon: Icons.square_foot,
+                          text: '${paddock.areaHectares} ha',
+                        ),
+                        _PaddockAssetFact(
+                          imagePath: AppImages.iconVaca,
+                          text: '$animalCount animales',
+                        ),
+                        if (paddock.grassType.isNotEmpty)
+                          _PaddockFact(
+                            icon: Icons.grass_outlined,
+                            text: paddock.grassType,
+                          ),
+                        if (!hasOrder)
+                          const _PaddockFact(
+                            icon: Icons.low_priority,
+                            text: 'Sin orden',
+                          ),
+                      ],
                     ),
-                    trailing: const Icon(Icons.chevron_right),
-                  ),
-                );
-              },
-            ),
+                    if (restSummary.isNotEmpty) ...[
+                      const SizedBox(height: 7),
+                      Text(
+                        restSummary,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: displayStatus == 'Disponible'
+                              ? AppColors.primaryDark
+                              : AppColors.muted,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Icon(Icons.chevron_right, color: AppColors.muted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PaddockFact extends StatelessWidget {
+  const _PaddockFact({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 15, color: AppColors.muted),
+        const SizedBox(width: 3),
+        Text(
+          text,
+          style: const TextStyle(color: AppColors.muted, fontSize: 12),
+        ),
+      ],
+    );
+  }
+}
+
+class _PaddockAssetFact extends StatelessWidget {
+  const _PaddockAssetFact({required this.imagePath, required this.text});
+
+  final String imagePath;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Image.asset(
+          imagePath,
+          width: 16,
+          height: 16,
+          fit: BoxFit.contain,
+          color: AppColors.muted,
+          colorBlendMode: BlendMode.srcIn,
+          filterQuality: FilterQuality.high,
+          errorBuilder: (_, __, ___) =>
+              const Icon(Icons.pets_outlined, size: 15, color: AppColors.muted),
+        ),
+        const SizedBox(width: 3),
+        Text(
+          text,
+          style: const TextStyle(color: AppColors.muted, fontSize: 12),
+        ),
+      ],
     );
   }
 }
@@ -109,6 +477,7 @@ class PaddockRotationOrderScreen extends ConsumerWidget {
     final paddocks = _sortPaddocksByRotationOrder(
       ref.watch(paddockViewModelProvider).requireValue,
     );
+
     final referenceDate = DateTime.now();
 
     return Scaffold(
@@ -127,7 +496,7 @@ class PaddockRotationOrderScreen extends ConsumerWidget {
                 const Padding(
                   padding: EdgeInsets.fromLTRB(20, 12, 20, 8),
                   child: Text(
-                    'Ruta configurada para la rotación del ganado.',
+                    'Arrastra los potreros y ordénalos según tu manejo de rotación.',
                     style: TextStyle(color: AppColors.muted, height: 1.3),
                   ),
                 ),
@@ -138,7 +507,10 @@ class PaddockRotationOrderScreen extends ConsumerWidget {
                     buildDefaultDragHandles: false,
                     onReorder: (oldIndex, newIndex) async {
                       final reordered = [...paddocks];
-                      if (newIndex > oldIndex) newIndex -= 1;
+
+                      if (newIndex > oldIndex) {
+                        newIndex -= 1;
+                      }
 
                       final moved = reordered.removeAt(oldIndex);
                       reordered.insert(newIndex, moved);
@@ -151,10 +523,12 @@ class PaddockRotationOrderScreen extends ConsumerWidget {
                     },
                     itemBuilder: (context, index) {
                       final paddock = paddocks[index];
+
                       final restStatus = _paddockRestStatus(
                         paddock,
                         referenceDate,
                       );
+
                       final restSummary = _paddockRestSummary(
                         paddock,
                         restStatus,
@@ -228,17 +602,22 @@ class PaddockRotationOrderScreen extends ConsumerWidget {
   }
 }
 
-Future<void> openPaddockForm(BuildContext context, [Paddock? paddock]) =>
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => PaddockFormScreen(paddock: paddock)),
-    );
+Future<void> openPaddockForm(BuildContext context, [Paddock? paddock]) {
+  return Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => PaddockFormScreen(paddock: paddock)),
+  );
+}
 
 class PaddockFormScreen extends ConsumerStatefulWidget {
   const PaddockFormScreen({super.key, this.paddock});
+
   final Paddock? paddock;
+
   @override
-  ConsumerState<PaddockFormScreen> createState() => _PaddockFormScreenState();
+  ConsumerState<PaddockFormScreen> createState() {
+    return _PaddockFormScreenState();
+  }
 }
 
 class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
@@ -248,23 +627,27 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
   final grass = TextEditingController();
   final restDays = TextEditingController();
   final plannedGrazingDays = TextEditingController();
+
   DateTime? lastGrazingEndDate;
   DateTime? grazingStartDate;
+
   String status = 'Disponible';
 
   @override
   void initState() {
     super.initState();
-    final p = widget.paddock;
-    if (p != null) {
-      name.text = p.name;
-      area.text = p.areaHectares.toString();
-      grass.text = p.grassType;
-      restDays.text = p.requiredRestDays?.toString() ?? '';
-      plannedGrazingDays.text = p.plannedGrazingDays?.toString() ?? '';
-      lastGrazingEndDate = p.lastGrazingEndDate;
-      grazingStartDate = p.grazingStartDate;
-      status = p.status;
+
+    final paddock = widget.paddock;
+
+    if (paddock != null) {
+      name.text = paddock.name;
+      area.text = paddock.areaHectares.toString();
+      grass.text = paddock.grassType;
+      restDays.text = paddock.requiredRestDays?.toString() ?? '';
+      plannedGrazingDays.text = paddock.plannedGrazingDays?.toString() ?? '';
+      lastGrazingEndDate = paddock.lastGrazingEndDate;
+      grazingStartDate = paddock.grazingStartDate;
+      status = paddock.status;
     }
   }
 
@@ -279,91 +662,69 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text(
-        widget.paddock == null ? 'Agregar potrero' : 'Editar potrero',
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          widget.paddock == null ? 'Agregar potrero' : 'Editar potrero',
+        ),
       ),
-    ),
-    body: Form(
-      key: key,
-      child: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          TextFormField(
-            controller: name,
-            decoration: const InputDecoration(labelText: 'Nombre del potrero'),
-            validator: req,
-          ),
-          const SizedBox(height: 14),
-          TextFormField(
-            controller: area,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Área',
-              suffixText: 'hectáreas',
-            ),
-            validator: (v) =>
-                double.tryParse(v?.replaceAll(',', '.') ?? '') == null
-                ? 'Ingresa un área válida'
-                : null,
-          ),
-          const SizedBox(height: 14),
-          TextFormField(
-            controller: grass,
-            decoration: const InputDecoration(labelText: 'Tipo de pastura'),
-          ),
-          const SizedBox(height: 14),
-          TextFormField(
-            controller: restDays,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Descanso requerido',
-              suffixText: 'días',
-            ),
-            validator: (v) {
-              final value = v?.trim() ?? '';
-              if (value.isEmpty) return null;
-
-              final parsed = int.tryParse(value);
-              if (parsed == null || parsed <= 0) {
-                return 'Ingresa una cantidad mayor a cero';
-              }
-
-              return null;
-            },
-          ),
-          const SizedBox(height: 14),
-          if (status == 'En uso') ...[
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.login_outlined),
-              title: const Text('Fecha de entrada del ganado'),
-              subtitle: Text(
-                grazingStartDate == null
-                    ? 'Sin fecha registrada'
-                    : MaterialLocalizations.of(
-                        context,
-                      ).formatMediumDate(grazingStartDate!),
+      body: Form(
+        key: key,
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            TextFormField(
+              controller: name,
+              decoration: const InputDecoration(
+                labelText: 'Nombre del potrero',
               ),
-              trailing: const Icon(Icons.calendar_month_outlined),
-              onTap: pickGrazingStartDate,
+              validator: req,
             ),
             const SizedBox(height: 14),
             TextFormField(
-              controller: plannedGrazingDays,
+              controller: area,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Área',
+                suffixText: 'hectáreas',
+              ),
+              validator: (value) {
+                final parsed = double.tryParse(
+                  value?.replaceAll(',', '.') ?? '',
+                );
+
+                if (parsed == null) {
+                  return 'Ingresa un área válida';
+                }
+
+                return null;
+              },
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: grass,
+              decoration: const InputDecoration(labelText: 'Tipo de pastura'),
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: restDays,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
-                labelText: 'Uso planeado',
+                labelText: 'Descanso requerido',
                 suffixText: 'días',
               ),
-              validator: (v) {
-                if (status != 'En uso') return null;
+              validator: (value) {
+                final cleanValue = value?.trim() ?? '';
 
-                final value = v?.trim() ?? '';
-                if (value.isEmpty) return 'Configura los días de uso';
+                if (cleanValue.isEmpty) {
+                  return null;
+                }
 
-                final parsed = int.tryParse(value);
+                final parsed = int.tryParse(cleanValue);
+
                 if (parsed == null || parsed <= 0) {
                   return 'Ingresa una cantidad mayor a cero';
                 }
@@ -372,60 +733,117 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
               },
             ),
             const SizedBox(height: 14),
-          ],
-          ListTile(
-            enabled: status != 'En uso',
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.event_available_outlined),
-            title: const Text('Fecha de salida del ganado'),
-            subtitle: Text(
-              status == 'En uso'
-                  ? 'No aplica mientras el potrero está en uso'
-                  : lastGrazingEndDate == null
-                  ? 'Sin fecha registrada'
-                  : MaterialLocalizations.of(
-                      context,
-                    ).formatMediumDate(lastGrazingEndDate!),
+            if (status == 'En uso') ...[
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.login_outlined),
+                title: const Text('Fecha de entrada del ganado'),
+                subtitle: Text(
+                  grazingStartDate == null
+                      ? 'Sin fecha registrada'
+                      : MaterialLocalizations.of(
+                          context,
+                        ).formatMediumDate(grazingStartDate!),
+                ),
+                trailing: const Icon(Icons.calendar_month_outlined),
+                onTap: pickGrazingStartDate,
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: plannedGrazingDays,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Uso planeado',
+                  suffixText: 'días',
+                ),
+                validator: (value) {
+                  if (status != 'En uso') {
+                    return null;
+                  }
+
+                  final cleanValue = value?.trim() ?? '';
+
+                  if (cleanValue.isEmpty) {
+                    return 'Configura los días de uso';
+                  }
+
+                  final parsed = int.tryParse(cleanValue);
+
+                  if (parsed == null || parsed <= 0) {
+                    return 'Ingresa una cantidad mayor a cero';
+                  }
+
+                  return null;
+                },
+              ),
+              const SizedBox(height: 14),
+            ],
+            ListTile(
+              enabled: status != 'En uso',
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.event_available_outlined),
+              title: const Text('Fecha de salida del ganado'),
+              subtitle: Text(
+                status == 'En uso'
+                    ? 'No aplica mientras el potrero está en uso'
+                    : lastGrazingEndDate == null
+                    ? 'Sin fecha registrada'
+                    : MaterialLocalizations.of(
+                        context,
+                      ).formatMediumDate(lastGrazingEndDate!),
+              ),
+              trailing: const Icon(Icons.calendar_month_outlined),
+              onTap: pickLastGrazingEndDate,
             ),
-            trailing: const Icon(Icons.calendar_month_outlined),
-            onTap: pickLastGrazingEndDate,
-          ),
-          const SizedBox(height: 14),
-          DropdownButtonFormField<String>(
-            value: status,
-            decoration: const InputDecoration(labelText: 'Estado'),
-            items: [
-              'Disponible',
-              'En uso',
-              'Descansando',
-              'Agotado',
-            ].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-            onChanged: (v) {
-              setState(() {
-                status = v!;
-                if (status == 'En uso') {
-                  grazingStartDate ??= DateTime.now();
-                  lastGrazingEndDate = null;
+            const SizedBox(height: 14),
+            DropdownButtonFormField<String>(
+              value: status,
+              decoration: const InputDecoration(labelText: 'Estado'),
+              items: ['Disponible', 'En uso', 'Descansando', 'Agotado']
+                  .map(
+                    (value) =>
+                        DropdownMenuItem(value: value, child: Text(value)),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value == null) {
+                  return;
                 }
-              });
-            },
-          ),
-          const SizedBox(height: 24),
-          FilledButton(
-            onPressed: save,
-            child: Text(
-              widget.paddock == null ? 'Agregar potrero' : 'Guardar cambios',
+
+                setState(() {
+                  status = value;
+
+                  if (status == 'En uso') {
+                    grazingStartDate ??= DateTime.now();
+                    lastGrazingEndDate = null;
+                  }
+                });
+              },
             ),
-          ),
-        ],
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: save,
+              child: Text(
+                widget.paddock == null ? 'Agregar potrero' : 'Guardar cambios',
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
-  String? req(String? v) =>
-      v == null || v.trim().isEmpty ? 'Este dato es necesario' : null;
+    );
+  }
+
+  String? req(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Este dato es necesario';
+    }
+
+    return null;
+  }
 
   Future<void> pickLastGrazingEndDate() async {
     final now = DateTime.now();
+
     final picked = await showDatePicker(
       context: context,
       firstDate: DateTime(now.year - 5),
@@ -434,12 +852,15 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
     );
 
     if (picked != null && mounted) {
-      setState(() => lastGrazingEndDate = picked);
+      setState(() {
+        lastGrazingEndDate = picked;
+      });
     }
   }
 
   Future<void> pickGrazingStartDate() async {
     final now = DateTime.now();
+
     final picked = await showDatePicker(
       context: context,
       firstDate: DateTime(now.year - 5),
@@ -448,21 +869,31 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
     );
 
     if (picked != null && mounted) {
-      setState(() => grazingStartDate = picked);
+      setState(() {
+        grazingStartDate = picked;
+      });
     }
   }
 
   Future<void> save() async {
-    if (!key.currentState!.validate()) return;
+    if (!key.currentState!.validate()) {
+      return;
+    }
+
     final now = DateTime.now();
     final old = widget.paddock;
+
     final requiredRestDays = int.tryParse(restDays.text.trim());
+
     final plannedDays = int.tryParse(plannedGrazingDays.text.trim());
+
     final grazingEndDate = status == 'En uso'
         ? null
         : lastGrazingEndDate ?? (old?.status == 'En uso' ? now : null);
+
     final activeStartDate = status == 'En uso' ? grazingStartDate ?? now : null;
-    final p = Paddock(
+
+    final paddock = Paddock(
       id: old?.id ?? const Uuid().v4(),
       name: name.text.trim(),
       areaHectares: double.parse(area.text.replaceAll(',', '.')),
@@ -476,38 +907,51 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
       createdAt: old?.createdAt ?? now,
       updatedAt: now,
     );
-    await ref.read(paddockViewModelProvider.notifier).save(p);
-    if (mounted) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('✓ Potrero guardado')));
+
+    await ref.read(paddockViewModelProvider.notifier).save(paddock);
+
+    if (!mounted) {
+      return;
     }
+
+    Navigator.pop(context);
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('✓ Potrero guardado')));
   }
 }
 
 class PaddockDetailScreen extends ConsumerWidget {
   const PaddockDetailScreen({super.key, required this.paddockId});
+
   final String paddockId;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final paddocks = ref.watch(paddockViewModelProvider).requireValue;
-    final p = paddocks.firstWhere((p) => p.id == paddockId);
+
+    final paddock = paddocks.firstWhere((paddock) => paddock.id == paddockId);
+
     final referenceDate = DateTime.now();
-    final elapsedRestDays = _elapsedRestDays(p, referenceDate);
-    final restStatus = _paddockRestStatus(p, referenceDate);
+
+    final elapsedRestDays = _elapsedRestDays(paddock, referenceDate);
+
+    final restStatus = _paddockRestStatus(paddock, referenceDate);
+
     final animals = ref
         .watch(animalViewModelProvider)
         .requireValue
         .animals
-        .where((a) => a.paddockId == p.id)
+        .where((animal) => animal.paddockId == paddock.id)
         .toList();
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(p.name),
+        title: Text(paddock.name),
         actions: [
           IconButton(
-            onPressed: () => openPaddockForm(context, p),
+            onPressed: () => openPaddockForm(context, paddock),
             icon: const Icon(Icons.edit),
           ),
         ],
@@ -525,37 +969,37 @@ class PaddockDetailScreen extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          p.name,
+                          paddock.name,
                           style: const TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
-                      StatusChip(_paddockDisplayStatus(p, restStatus)),
+                      StatusChip(_paddockDisplayStatus(paddock, restStatus)),
                     ],
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    '${p.areaHectares} hectáreas · ${p.grassType}',
+                    '${paddock.areaHectares} hectáreas · ${paddock.grassType}',
                     style: const TextStyle(fontSize: 16),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    p.requiredRestDays == null
+                    paddock.requiredRestDays == null
                         ? 'Descanso requerido sin configurar'
-                        : 'Descanso requerido: ${p.requiredRestDays} días',
+                        : 'Descanso requerido: ${paddock.requiredRestDays} días',
                     style: const TextStyle(color: AppColors.muted),
                   ),
-                  if (p.lastGrazingEndDate != null)
+                  if (paddock.lastGrazingEndDate != null)
                     Text(
                       '$elapsedRestDays días desde la salida del ganado',
                       style: const TextStyle(color: AppColors.muted),
                     ),
-                  if (p.status != 'En uso') ...[
+                  if (paddock.status != 'En uso') ...[
                     const SizedBox(height: 8),
                     Text(
-                      _paddockRestSummary(p, restStatus),
+                      _paddockRestSummary(paddock, restStatus),
                       style: TextStyle(
                         color: restStatus.isReady
                             ? AppColors.primaryDark
@@ -564,12 +1008,14 @@ class PaddockDetailScreen extends ConsumerWidget {
                       ),
                     ),
                   ],
-                  if (p.status == 'En uso' && p.grazingStartDate != null)
+                  if (paddock.status == 'En uso' &&
+                      paddock.grazingStartDate != null)
                     Text(
-                      _activeGrazingStatusText(p, referenceDate),
+                      _activeGrazingStatusText(paddock, referenceDate),
                       style: const TextStyle(color: AppColors.muted),
                     ),
-                  if (_canAdjustRest(p) && p.lastGrazingEndDate != null) ...[
+                  if (_canAdjustRest(paddock) &&
+                      paddock.lastGrazingEndDate != null) ...[
                     const SizedBox(height: 16),
                     Align(
                       alignment: Alignment.centerLeft,
@@ -577,7 +1023,7 @@ class PaddockDetailScreen extends ConsumerWidget {
                         onPressed: () => _showAdjustRestDialog(
                           context: context,
                           ref: ref,
-                          paddock: p,
+                          paddock: paddock,
                           restStatus: restStatus,
                         ),
                         icon: const Icon(Icons.more_time),
@@ -604,11 +1050,11 @@ class PaddockDetailScreen extends ConsumerWidget {
             )
           else
             ...animals.map(
-              (a) => Card(
+              (animal) => Card(
                 child: ListTile(
                   leading: const CircleAvatar(child: Icon(Icons.pets)),
-                  title: Text(a.displayName),
-                  subtitle: Text(a.code),
+                  title: Text(animal.displayName),
+                  subtitle: Text(animal.code),
                 ),
               ),
             ),
@@ -616,128 +1062,6 @@ class PaddockDetailScreen extends ConsumerWidget {
       ),
     );
   }
-}
-
-class RotationScreen extends ConsumerWidget {
-  const RotationScreen({super.key});
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final paddocks = ref.watch(paddockViewModelProvider).requireValue;
-    final animals = ref.watch(animalViewModelProvider).requireValue.animals;
-    final referenceDate = DateTime.now();
-    final rotation = const CalculatePaddockRotation()(
-      paddocks: paddocks,
-      animals: animals,
-      referenceDate: referenceDate,
-    );
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Rotación de potreros')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Card(
-            color: AppColors.primaryLight,
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: rotation.active == null
-                  ? const _RotationMessage(
-                      title: 'No hay un potrero en uso',
-                      body:
-                          'Asigna el ganado a un potrero para iniciar el pastoreo.',
-                    )
-                  : _RotationMessage(
-                      title:
-                          'Potrero ${rotation.active!.paddock.name} se está usando',
-                      body: _activeRotationBody(rotation.active!),
-                    ),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Card(
-            color: const Color(0xFFFFF3D8),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: rotation.next == null
-                  ? const _RotationMessage(
-                      title: 'No hay una próxima rotación calculada',
-                      body: 'Configura el tiempo de descanso de tus potreros.',
-                    )
-                  : _RotationMessage(
-                      title: rotation.next!.isReady
-                          ? 'Potrero ${rotation.next!.paddock.name} está listo para la rotación'
-                          : 'Potrero ${rotation.next!.paddock.name} estará listo en ${rotation.next!.remainingRestDays} días',
-                      body: rotation.next!.isReady
-                          ? rotation.next!.hasRestRequirement
-                                ? 'Cumplió sus ${rotation.next!.requiredRestDays} días de descanso.'
-                                : 'Está disponible para recibir ganado.'
-                          : 'Será el próximo potrero disponible para la rotación.',
-                    ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'Orden de revisión',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
-          ..._sortPaddocksByRotationOrder(paddocks).map((p) {
-            final elapsed = _elapsedRestDays(p, referenceDate);
-            final restStatus = _paddockRestStatus(p, referenceDate);
-            final restSummary = _paddockRestSummary(p, restStatus);
-
-            return Card(
-              child: ListTile(
-                leading: Icon(
-                  p.status == 'En uso' ? Icons.pets : Icons.grass_outlined,
-                  color: AppColors.primary,
-                ),
-                title: Text(p.name),
-                subtitle: Text(
-                  [
-                    _paddockDisplayStatus(p, restStatus),
-                    if (p.requiredRestDays != null)
-                      '${p.requiredRestDays} días requeridos',
-                    if (elapsed != null) '$elapsed días de descanso',
-                    if (restSummary.isNotEmpty) restSummary,
-                  ].join(' · '),
-                ),
-              ),
-            );
-          }),
-          const SizedBox(height: 20),
-          const Text(
-            'En este MVP, los movimientos se registran desde el detalle de cada animal.',
-            style: TextStyle(color: AppColors.muted),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RotationMessage extends StatelessWidget {
-  const _RotationMessage({required this.title, required this.body});
-
-  final String title;
-  final String body;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        title,
-        style: const TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.w800,
-          color: AppColors.text,
-        ),
-      ),
-      const SizedBox(height: 6),
-      Text(body, style: const TextStyle(color: AppColors.muted, height: 1.3)),
-    ],
-  );
 }
 
 class _PaddockRestStatus {
@@ -749,8 +1073,13 @@ class _PaddockRestStatus {
   final int? elapsedDays;
   final int? remainingDays;
 
-  bool get hasRestPlan => elapsedDays != null && remainingDays != null;
-  bool get isReady => hasRestPlan && remainingDays! <= 0;
+  bool get hasRestPlan {
+    return elapsedDays != null && remainingDays != null;
+  }
+
+  bool get isReady {
+    return hasRestPlan && remainingDays! <= 0;
+  }
 }
 
 _PaddockRestStatus _paddockRestStatus(Paddock paddock, DateTime referenceDate) {
@@ -781,24 +1110,36 @@ String _paddockDisplayStatus(Paddock paddock, _PaddockRestStatus restStatus) {
 }
 
 String _paddockRestSummary(Paddock paddock, _PaddockRestStatus restStatus) {
-  if (paddock.status == 'En uso') return '';
-  if (paddock.status == 'Agotado') return 'Fuera de rotación';
-  if (paddock.status == 'Disponible') return 'Listo para recibir ganado';
+  if (paddock.status == 'En uso') {
+    return '';
+  }
+
+  if (paddock.status == 'Agotado') {
+    return 'Fuera de rotación';
+  }
+
+  if (paddock.status == 'Disponible') {
+    return 'Listo para recibir ganado';
+  }
 
   if (!restStatus.hasRestPlan) {
     return 'Descanso sin configurar';
   }
 
   final remainingDays = restStatus.remainingDays!;
+
   if (remainingDays > 0) {
     return remainingDays == 1
         ? 'Falta 1 día de descanso'
         : 'Faltan $remainingDays días de descanso';
   }
 
-  if (remainingDays == 0) return 'Descanso cumplido hoy';
+  if (remainingDays == 0) {
+    return 'Descanso cumplido hoy';
+  }
 
   final readyDays = remainingDays.abs();
+
   return readyDays == 1 ? 'Listo hace 1 día' : 'Listo hace $readyDays días';
 }
 
@@ -817,6 +1158,7 @@ Future<void> _showAdjustRestDialog({
         paddock.requiredRestDays?.toString() ??
         ((restStatus.elapsedDays ?? 0) + 7).toString(),
   );
+
   final formKey = GlobalKey<FormState>();
 
   final newRestDays = await showDialog<int>(
@@ -836,6 +1178,7 @@ Future<void> _showAdjustRestDialog({
             ),
             validator: (value) {
               final parsed = int.tryParse(value?.trim() ?? '');
+
               if (parsed == null || parsed <= 0) {
                 return 'Ingresa una cantidad mayor a cero';
               }
@@ -851,7 +1194,9 @@ Future<void> _showAdjustRestDialog({
           ),
           FilledButton(
             onPressed: () {
-              if (!formKey.currentState!.validate()) return;
+              if (!formKey.currentState!.validate()) {
+                return;
+              }
 
               Navigator.pop(dialogContext, int.parse(controller.text.trim()));
             },
@@ -863,9 +1208,13 @@ Future<void> _showAdjustRestDialog({
   );
 
   controller.dispose();
-  if (newRestDays == null) return;
+
+  if (newRestDays == null) {
+    return;
+  }
 
   final now = DateTime.now();
+
   await ref
       .read(paddockViewModelProvider.notifier)
       .save(
@@ -885,31 +1234,19 @@ Future<void> _showAdjustRestDialog({
 
 int? _elapsedRestDays(Paddock paddock, DateTime referenceDate) {
   final lastGrazingEndDate = paddock.lastGrazingEndDate;
-  if (lastGrazingEndDate == null) return null;
+
+  if (lastGrazingEndDate == null) {
+    return null;
+  }
 
   return referenceDate.difference(lastGrazingEndDate).inDays;
-}
-
-String _activeRotationBody(ActivePaddockRotation active) {
-  final animalText = 'Actualmente tiene ${active.animalCount} animales.';
-  if (!active.hasGrazingPlan) return animalText;
-
-  final remainingDays = active.remainingGrazingDays!;
-  if (remainingDays < 0) {
-    return '$animalText Lleva ${active.elapsedGrazingDays} días en uso.';
-  }
-
-  if (remainingDays == 0) {
-    return '$animalText Termina su uso hoy.';
-  }
-
-  return '$animalText Faltan $remainingDays días de uso.';
 }
 
 String _activeGrazingStatusText(Paddock paddock, DateTime referenceDate) {
   final elapsedDays = referenceDate
       .difference(paddock.grazingStartDate!)
       .inDays;
+
   final plannedDays = paddock.plannedGrazingDays;
 
   if (plannedDays == null || plannedDays <= 0) {
@@ -917,32 +1254,43 @@ String _activeGrazingStatusText(Paddock paddock, DateTime referenceDate) {
   }
 
   final remainingDays = plannedDays - elapsedDays;
-  if (remainingDays < 0) return 'En uso desde hace $elapsedDays días';
-  if (remainingDays == 0) return 'Termina su uso hoy';
+
+  if (remainingDays < 0) {
+    return 'En uso desde hace $elapsedDays días';
+  }
+
+  if (remainingDays == 0) {
+    return 'Termina su uso hoy';
+  }
 
   return 'En uso desde hace $elapsedDays días · faltan $remainingDays días';
 }
 
 List<Paddock> _sortPaddocksByRotationOrder(List<Paddock> paddocks) {
   final originalIndexes = <String, int>{
-    for (var i = 0; i < paddocks.length; i++) paddocks[i].id: i,
+    for (var index = 0; index < paddocks.length; index++)
+      paddocks[index].id: index,
   };
+
   final sorted = [...paddocks];
 
-  sorted.sort((a, b) {
-    final aOrder = a.rotationOrder;
-    final bOrder = b.rotationOrder;
+  sorted.sort((first, second) {
+    final firstOrder = first.rotationOrder;
+    final secondOrder = second.rotationOrder;
 
-    if (aOrder != null && bOrder != null) {
-      final order = aOrder.compareTo(bOrder);
-      if (order != 0) return order;
-    } else if (aOrder != null) {
+    if (firstOrder != null && secondOrder != null) {
+      final orderComparison = firstOrder.compareTo(secondOrder);
+
+      if (orderComparison != 0) {
+        return orderComparison;
+      }
+    } else if (firstOrder != null) {
       return -1;
-    } else if (bOrder != null) {
+    } else if (secondOrder != null) {
       return 1;
     }
 
-    return originalIndexes[a.id]!.compareTo(originalIndexes[b.id]!);
+    return originalIndexes[first.id]!.compareTo(originalIndexes[second.id]!);
   });
 
   return sorted;
