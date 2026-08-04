@@ -286,6 +286,8 @@ class DashboardScreen extends ConsumerWidget {
 
     final activeRotation = rotation.active;
 
+    final needsRotationOrder = _needsRotationOrder(paddocks);
+
     final hasGrazingAlert =
         activeRotation?.hasGrazingPlan == true &&
         (activeRotation!.isOverdue ||
@@ -423,6 +425,11 @@ class DashboardScreen extends ConsumerWidget {
                   availablePaddocksCount: availablePaddocks,
                   totalPaddocksCount: paddocks.length,
                 ),
+
+                if (needsRotationOrder) ...[
+                  const SizedBox(height: 14),
+                  const _RotationOrderAlertCard(),
+                ],
 
                 if (hasGrazingAlert) ...[
                   const SizedBox(height: 14),
@@ -841,6 +848,63 @@ class _GrazingAlertCard extends StatefulWidget {
   State<_GrazingAlertCard> createState() => _GrazingAlertCardState();
 }
 
+class _RotationOrderAlertCard extends StatelessWidget {
+  const _RotationOrderAlertCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF3D8),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.72),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.reorder_rounded, color: AppColors.warning),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Orden de rotación pendiente',
+                  style: TextStyle(
+                    color: AppColors.warning,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Configura el orden de tus potreros para que la próxima rotación siga tu recorrido real.',
+                  style: TextStyle(
+                    color: AppColors.text,
+                    fontSize: 13,
+                    height: 1.3,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _GrazingAlertCardState extends State<_GrazingAlertCard>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
@@ -851,32 +915,31 @@ class _GrazingAlertCardState extends State<_GrazingAlertCard>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
+      duration: const Duration(milliseconds: 850),
     );
     _pulse = Tween<double>(
-      begin: 0.10,
-      end: 0.28,
+      begin: 0.08,
+      end: 0.22,
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
-
-    if (widget.active.isOverdue) {
-      _controller.repeat(reverse: true);
-    }
+    _syncPulse();
   }
 
   @override
   void didUpdateWidget(covariant _GrazingAlertCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.active.isOverdue && !_controller.isAnimating) {
-      _controller.repeat(reverse: true);
-    } else if (!widget.active.isOverdue && _controller.isAnimating) {
-      _controller.stop();
-    }
+    _syncPulse();
   }
 
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  void _syncPulse() {
+    if (!_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    }
   }
 
   @override
@@ -888,17 +951,15 @@ class _GrazingAlertCardState extends State<_GrazingAlertCard>
     return AnimatedBuilder(
       animation: _pulse,
       builder: (context, child) {
-        final borderAlpha = isOverdue ? _pulse.value : 0.28;
+        final alpha = _pulse.value;
 
         return Container(
           width: double.infinity,
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: isOverdue
-                ? const Color(0xFFFDE7E4)
-                : const Color(0xFFFFF3D8),
+            color: color.withValues(alpha: alpha),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: color.withValues(alpha: borderAlpha)),
+            border: Border.all(color: color.withValues(alpha: alpha + 0.18)),
           ),
           child: child,
         );
@@ -1007,6 +1068,11 @@ bool _isPaddockAvailableNow(Paddock paddock, DateTime referenceDate) {
   return requiredRestDays -
           referenceDate.difference(lastGrazingEndDate).inDays <=
       0;
+}
+
+bool _needsRotationOrder(List<Paddock> paddocks) {
+  return paddocks.length > 1 &&
+      paddocks.any((paddock) => paddock.rotationOrder == null);
 }
 
 class _Metric extends StatelessWidget {

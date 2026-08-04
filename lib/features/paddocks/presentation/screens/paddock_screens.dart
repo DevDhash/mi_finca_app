@@ -72,25 +72,12 @@ class PaddockListScreen extends ConsumerWidget {
                         ),
                       ),
                     ),
-                    TextButton.icon(
+                    _RotationOrderButton(
+                      needsAttention: orderedCount < paddocks.length,
                       onPressed: () => Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => const PaddockRotationOrderScreen(),
-                        ),
-                      ),
-                      icon: const Icon(Icons.reorder_rounded, size: 18),
-                      label: const Text('Ordenar'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppColors.primaryDark,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 6,
-                        ),
-                        visualDensity: VisualDensity.compact,
-                        textStyle: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
@@ -281,12 +268,98 @@ class _PaddockOverviewItem extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: AppColors.muted,
-            fontSize: 12,
-          ),
+          style: const TextStyle(color: AppColors.muted, fontSize: 12),
         ),
       ],
+    );
+  }
+}
+
+class _RotationOrderButton extends StatefulWidget {
+  const _RotationOrderButton({
+    required this.needsAttention,
+    required this.onPressed,
+  });
+
+  final bool needsAttention;
+  final VoidCallback onPressed;
+
+  @override
+  State<_RotationOrderButton> createState() => _RotationOrderButtonState();
+}
+
+class _RotationOrderButtonState extends State<_RotationOrderButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 850),
+    );
+    _pulse = Tween<double>(
+      begin: 0.08,
+      end: 0.22,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+    _syncPulse();
+  }
+
+  @override
+  void didUpdateWidget(covariant _RotationOrderButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncPulse();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _syncPulse() {
+    if (widget.needsAttention && !_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    } else if (!widget.needsAttention && _controller.isAnimating) {
+      _controller.stop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = widget.needsAttention
+        ? AppColors.danger
+        : AppColors.primaryDark;
+
+    return AnimatedBuilder(
+      animation: _pulse,
+      builder: (context, child) {
+        final alpha = widget.needsAttention ? _pulse.value : 0.0;
+
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: alpha),
+            borderRadius: BorderRadius.circular(12),
+            border: widget.needsAttention
+                ? Border.all(color: color.withValues(alpha: alpha + 0.18))
+                : null,
+          ),
+          child: child,
+        );
+      },
+      child: TextButton.icon(
+        onPressed: widget.onPressed,
+        icon: Icon(Icons.reorder_rounded, size: 18, color: color),
+        label: Text('Ordenar', style: TextStyle(color: color)),
+        style: TextButton.styleFrom(
+          foregroundColor: color,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          visualDensity: VisualDensity.compact,
+          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+        ),
+      ),
     );
   }
 }
