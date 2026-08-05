@@ -52,14 +52,24 @@ class _MainShellState extends ConsumerState<MainShell> {
                 },
                 destinations: const [
                   NavigationDestination(
-                    icon: Icon(Icons.home_outlined),
-                    selectedIcon: Icon(Icons.home),
+                    icon: Icon(
+                      Icons.home_outlined,
+
+                      color: AppColors.primaryDark,
+                    ),
+
+                    selectedIcon: Icon(
+                      Icons.home,
+
+                      color: AppColors.primaryDark,
+                    ),
+
                     label: 'Inicio',
                   ),
                   NavigationDestination(
-                    icon: _NavAssetIcon(path: AppImages.iconCabezaToro),
+                    icon: _NavAssetIcon(path: AppImages.iconToro),
                     selectedIcon: _NavAssetIcon(
-                      path: AppImages.iconCabezaToro,
+                      path: AppImages.iconToro,
                       selected: true,
                     ),
                     label: 'Animales',
