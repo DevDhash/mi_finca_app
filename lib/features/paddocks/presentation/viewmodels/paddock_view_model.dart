@@ -112,6 +112,17 @@ class PaddockViewModel extends AsyncNotifier<List<Paddock>> {
     unawaited(ref.read(syncViewModelProvider.notifier).syncPendingIfOnline());
   }
 
+  void applyPersistedMovementUpdates(List<Paddock> updatedPaddocks) {
+    final updatedById = {
+      for (final paddock in updatedPaddocks) paddock.id: paddock,
+    };
+    state = AsyncData(
+      state.requireValue
+          .map((paddock) => updatedById[paddock.id] ?? paddock)
+          .toList(),
+    );
+  }
+
   Future<void> reload() async {
     state = AsyncData(await ref.read(paddockRepositoryProvider).getAll());
   }

@@ -7,10 +7,13 @@ import 'package:mi_finca_app/app/theme/app_theme.dart';
 import 'package:mi_finca_app/core/widgets/common_widgets.dart';
 import 'package:mi_finca_app/features/animals/domain/entities/animal.dart';
 import 'package:mi_finca_app/features/animals/presentation/viewmodels/animal_view_model.dart';
+import 'package:mi_finca_app/features/paddocks/domain/entities/paddock.dart';
+import 'package:mi_finca_app/features/paddocks/domain/services/paddock_operational_status.dart';
 import 'package:mi_finca_app/features/paddocks/presentation/viewmodels/paddock_view_model.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
+import 'package:mi_finca_app/core/constants/app_images.dart';
 
 class AnimalListScreen extends ConsumerStatefulWidget {
   const AnimalListScreen({super.key});
@@ -36,22 +39,48 @@ class _AnimalListScreenState extends ConsumerState<AnimalListScreen> {
         .toList();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Animales'),
+        centerTitle: true,
+        title: const Text(
+          'Animales',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
         actions: [
-          IconButton(
-            onPressed: animals.isEmpty || paddocks.length < 2
-                ? null
-                : () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const MoveAnimalBatchScreen(),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: OutlinedButton.icon(
+              onPressed: animals.isEmpty || paddocks.length < 2
+                  ? null
+                  : () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const MoveAnimalBatchScreen(),
+                      ),
                     ),
-                  ),
-            icon: const Icon(Icons.group_work_outlined),
-            tooltip: 'Mover lote',
+              icon: const Icon(Icons.swap_horiz, size: 16),
+              label: const Text('Mover lote'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.primaryDark,
+                side: const BorderSide(color: AppColors.primary, width: 1),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                minimumSize: const Size(0, 36),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+                textStyle: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
           ),
         ],
       ),
+
       body: Column(
         children: [
           Padding(
@@ -84,12 +113,13 @@ class _AnimalListScreenState extends ConsumerState<AnimalListScreen> {
           const SizedBox(height: 8),
           Expanded(
             child: items.isEmpty
-                ? EmptyState(
-                    icon: Icons.pets,
+                ?EmptyState(
+                    imagePath: AppImages.iconoAgregarAnimal,
                     message: query.isEmpty
                         ? 'Aún no tienes animales registrados. Toca el botón para agregar el primero.'
                         : 'No se encontraron resultados.',
                     actionLabel: 'Registrar animal',
+
                     onAction: () => openAnimalForm(context),
                   )
                 : ListView.separated(
@@ -631,8 +661,15 @@ class MoveAnimalScreen extends ConsumerStatefulWidget {
 }
 
 class _MoveAnimalScreenState extends ConsumerState<MoveAnimalScreen> {
+  final plannedGrazingDays = TextEditingController();
   String? destination;
   DateTime date = DateTime.now();
+
+  @override
+  void dispose() {
+    plannedGrazingDays.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -646,12 +683,19 @@ class _MoveAnimalScreenState extends ConsumerState<MoveAnimalScreen> {
     }.values.toList();
 
     final options = uniquePaddocks
-        .where((paddock) => paddock.id != animal.paddockId)
+        .where(
+          (paddock) =>
+              paddock.id != animal.paddockId &&
+              _canReceiveAnimals(paddock, date),
+        )
         .toList();
 
     final safeDestination = options.any((paddock) => paddock.id == destination)
         ? destination
         : null;
+    final destinationWasEmpty =
+        safeDestination != null &&
+        !animals.any((animal) => animal.paddockId == safeDestination);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Mover de potrero')),
@@ -678,6 +722,17 @@ class _MoveAnimalScreenState extends ConsumerState<MoveAnimalScreen> {
               setState(() => destination = value);
             },
           ),
+          if (destinationWasEmpty) ...[
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: plannedGrazingDays,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Días de uso planeado',
+                helperText: 'Se usará para las alertas de rotación.',
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           ListTile(
             tileColor: Colors.white,
@@ -705,9 +760,26 @@ class _MoveAnimalScreenState extends ConsumerState<MoveAnimalScreen> {
             onPressed: safeDestination == null
                 ? null
                 : () async {
+                    final plannedDays = int.tryParse(
+                      plannedGrazingDays.text.trim(),
+                    );
+                    if (destinationWasEmpty &&
+                        (plannedDays == null || plannedDays <= 0)) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Ingresa días de uso planeado válidos'),
+                        ),
+                      );
+                      return;
+                    }
                     await ref
                         .read(animalViewModelProvider.notifier)
-                        .move(animal, safeDestination, date);
+                        .move(
+                          animal,
+                          safeDestination,
+                          date,
+                          plannedGrazingDays: plannedDays,
+                        );
 
                     if (context.mounted) {
                       Navigator.pop(context);
@@ -736,9 +808,16 @@ class MoveAnimalBatchScreen extends ConsumerStatefulWidget {
 
 class _MoveAnimalBatchScreenState extends ConsumerState<MoveAnimalBatchScreen> {
   final selectedAnimalIds = <String>{};
+  final plannedGrazingDays = TextEditingController();
   String? sourcePaddockId;
   String? destinationPaddockId;
   DateTime date = DateTime.now();
+
+  @override
+  void dispose() {
+    plannedGrazingDays.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -755,7 +834,11 @@ class _MoveAnimalBatchScreenState extends ConsumerState<MoveAnimalBatchScreen> {
         .where((animal) => selectedAnimalIds.contains(animal.id))
         .toList();
     final destinationOptions = paddocks
-        .where((paddock) => paddock.id != sourcePaddockId)
+        .where(
+          (paddock) =>
+              paddock.id != sourcePaddockId &&
+              _canReceiveAnimals(paddock, date),
+        )
         .toList();
     final safeDestination =
         destinationOptions.any((paddock) => paddock.id == destinationPaddockId)
@@ -764,20 +847,67 @@ class _MoveAnimalBatchScreenState extends ConsumerState<MoveAnimalBatchScreen> {
     final selectedMovableAnimals = selectedAnimals
         .where((animal) => animal.paddockId != safeDestination)
         .toList();
+    final destinationWasEmpty =
+        safeDestination != null &&
+        !animalState.animals.any(
+          (animal) => animal.paddockId == safeDestination,
+        );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Mover lote')),
+      appBar: AppBar(
+        centerTitle: true,
+        title: const Text(
+          'Mover lote',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
       body: Column(
         children: [
           Expanded(
             child: ListView(
               padding: const EdgeInsets.all(20),
               children: [
-                const Text(
-                  'Selecciona animales',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 88,
+                      height: 88,
+                      child: ClipOval(
+                        child: Image.asset(
+                          AppImages.iconoMoverLote,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Selecciona animales',
+                            style: TextStyle(
+                              color: AppColors.text,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          SizedBox(height: 6),
+                          Text(
+                            'Elige los animales que quieres mover y configura el potrero de destino.',
+                            style: TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 14,
+                              height: 1.35,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
                 DropdownButtonFormField<String?>(
                   value: sourcePaddockId,
                   decoration: const InputDecoration(
@@ -812,6 +942,17 @@ class _MoveAnimalBatchScreenState extends ConsumerState<MoveAnimalBatchScreen> {
                     });
                   },
                 ),
+                if (destinationWasEmpty) ...[
+                  const SizedBox(height: 14),
+                  TextFormField(
+                    controller: plannedGrazingDays,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Días de uso planeado',
+                      helperText: 'Se usará para las alertas de rotación.',
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 14),
                 DropdownButtonFormField<String>(
                   value: safeDestination,
@@ -913,42 +1054,124 @@ class _MoveAnimalBatchScreenState extends ConsumerState<MoveAnimalBatchScreen> {
                   ...visibleAnimals.map((animal) {
                     final paddockName =
                         paddockById[animal.paddockId]?.name ?? 'Sin potrero';
+
                     final isSelected = selectedAnimalIds.contains(animal.id);
+
                     final isAlreadyInDestination =
                         animal.paddockId == safeDestination;
 
-                    return Card(
-                      child: CheckboxListTile(
-                        value: isSelected,
-                        onChanged: isAlreadyInDestination
-                            ? null
-                            : (value) {
-                                setState(() {
-                                  if (value == true) {
-                                    selectedAnimalIds.add(animal.id);
-                                  } else {
-                                    selectedAnimalIds.remove(animal.id);
-                                  }
-                                });
-                              },
-                        title: Text(
-                          animal.displayName,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        subtitle: Text('${animal.code} · $paddockName'),
-                        secondary: CircleAvatar(
-                          backgroundColor: AppColors.primaryLight,
-                          backgroundImage: animal.photoPath == null
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Card(
+                        margin: EdgeInsets.zero,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: isAlreadyInDestination
                               ? null
-                              : FileImage(File(animal.photoPath!)),
-                          child: animal.photoPath == null
-                              ? const Icon(
-                                  Icons.pets,
-                                  color: AppColors.primaryDark,
-                                )
-                              : null,
+                              : () {
+                                  setState(() {
+                                    if (isSelected) {
+                                      selectedAnimalIds.remove(animal.id);
+                                    } else {
+                                      selectedAnimalIds.add(animal.id);
+                                    }
+                                  });
+                                },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            child: Row(
+                              children: [
+                                Checkbox(
+                                  value: isSelected,
+                                  onChanged: isAlreadyInDestination
+                                      ? null
+                                      : (value) {
+                                          setState(() {
+                                            if (value == true) {
+                                              selectedAnimalIds.add(animal.id);
+                                            } else {
+                                              selectedAnimalIds.remove(
+                                                animal.id,
+                                              );
+                                            }
+                                          });
+                                        },
+                                ),
+
+                                const SizedBox(width: 6),
+
+                                CircleAvatar(
+                                  radius: 25,
+                                  backgroundColor: AppColors.primaryLight,
+                                  backgroundImage: animal.photoPath == null
+                                      ? null
+                                      : FileImage(File(animal.photoPath!)),
+                                  child: animal.photoPath == null
+                                      ? const Icon(
+                                          Icons.pets,
+                                          color: AppColors.primaryDark,
+                                        )
+                                      : null,
+                                ),
+
+                                const SizedBox(width: 12),
+
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        animal.displayName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: AppColors.text,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        '${animal.code} · $paddockName',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: AppColors.muted,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                                const SizedBox(width: 10),
+
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primaryLight,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    animal.type,
+                                    style: const TextStyle(
+                                      color: AppColors.primaryDark,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                        controlAffinity: ListTileControlAffinity.trailing,
                       ),
                     );
                   }),
@@ -984,10 +1207,26 @@ class _MoveAnimalBatchScreenState extends ConsumerState<MoveAnimalBatchScreen> {
   ) async {
     final destination = destinationPaddockId;
     if (destination == null) return;
+    final animals = ref.read(animalViewModelProvider).requireValue.animals;
+    final destinationWasEmpty = !animals.any(
+      (animal) => animal.paddockId == destination,
+    );
+    final plannedDays = int.tryParse(plannedGrazingDays.text.trim());
+    if (destinationWasEmpty && (plannedDays == null || plannedDays <= 0)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ingresa días de uso planeado válidos')),
+      );
+      return;
+    }
 
     final movedCount = await ref
         .read(animalViewModelProvider.notifier)
-        .moveMany(selectedAnimals, destination, date);
+        .moveMany(
+          selectedAnimals,
+          destination,
+          date,
+          plannedGrazingDays: plannedDays,
+        );
 
     if (context.mounted) {
       Navigator.pop(context);
@@ -1002,4 +1241,11 @@ class _MoveAnimalBatchScreenState extends ConsumerState<MoveAnimalBatchScreen> {
       );
     }
   }
+}
+
+bool _canReceiveAnimals(Paddock paddock, DateTime movementDate) {
+  return PaddockOperationalStatus.calculate(
+    paddock,
+    referenceDate: movementDate,
+  ).canReceiveAnimals;
 }

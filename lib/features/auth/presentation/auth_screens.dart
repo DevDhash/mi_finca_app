@@ -596,110 +596,110 @@ class _FarmSetupScreenState extends ConsumerState<FarmSetupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-  backgroundColor: const Color(0xFFFBF8F0),
-  body: SafeArea(
-    child: Form(
-        key: formKey,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-          children: [
-            Center(
-              child: Image.asset(
-                AppImages.donFincaBanner,
-                height: 150,
-                fit: BoxFit.contain,
-                filterQuality: FilterQuality.high,
-                errorBuilder: (_, __, ___) => const Icon(
-                  Icons.agriculture,
-                  size: 72,
-                  color: AppColors.primary,
+      backgroundColor: const Color(0xFFFBF8F0),
+      body: SafeArea(
+        child: Form(
+          key: formKey,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+            children: [
+              Center(
+                child: Image.asset(
+                  AppImages.donFincaBanner,
+                  height: 150,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                  errorBuilder: (_, __, ___) => const Icon(
+                    Icons.agriculture,
+                    size: 72,
+                    color: AppColors.primary,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 18),
-            const Text(
-              '¡Configuremos tu finca!',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w900,
-                color: AppColors.text,
-                letterSpacing: -0.4,
-              ),
-            ),
-            const SizedBox(height: 8),
-          
-            const SizedBox(height: 24),
-            TextFormField(
-              controller: name,
-              textInputAction: TextInputAction.next,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(
-                labelText: 'Nombre de la finca',
-              ),
-              validator: _requiredValidator,
-            ),
-            const SizedBox(height: 14),
-            TextFormField(
-              controller: location,
-              textInputAction: TextInputAction.next,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(labelText: 'Ubicación'),
-              validator: _requiredValidator,
-            ),
-            const SizedBox(height: 14),
-            TextFormField(
-              controller: paddock,
-              textInputAction: TextInputAction.next,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(
-                labelText: 'Nombre del primer potrero',
-                hintText: 'Ejemplo: Potrero Norte',
-              ),
-              validator: _requiredValidator,
-            ),
-            const SizedBox(height: 14),
-            TextFormField(
-              controller: restDays,
-              keyboardType: TextInputType.number,
-              textInputAction: TextInputAction.done,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(
-                labelText: 'Descanso requerido del primer potrero',
-                suffixText: 'días',
-                helperText:
-                    'Podrás cambiar este valor más adelante desde Potreros.',
-                helperMaxLines: 2,
-              ),
-              validator: _positiveIntegerValidator,
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              height: 56,
-              child: FilledButton(
-                onPressed: () async {
-                  if (!formKey.currentState!.validate()) return;
-
-                  FocusScope.of(context).unfocus();
-
-                  await ref
-                      .read(onboardingViewModelProvider.notifier)
-                      .configure(
-                        name.text.trim(),
-                        location.text.trim(),
-                        paddock.text.trim(),
-                        int.parse(restDays.text.trim()),
-                      );
-                },
-                child: const Text(
-                  'Guardar y comenzar',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+              const SizedBox(height: 18),
+              const Text(
+                '¡Configuremos tu finca!',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.text,
+                  letterSpacing: -0.4,
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+
+              const SizedBox(height: 24),
+              TextFormField(
+                controller: name,
+                textInputAction: TextInputAction.next,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Nombre de la finca',
+                ),
+                validator: _requiredValidator,
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: location,
+                textInputAction: TextInputAction.next,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(labelText: 'Ubicación'),
+                validator: _requiredValidator,
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: paddock,
+                textInputAction: TextInputAction.next,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Nombre del primer potrero',
+                  hintText: 'Ejemplo: Potrero Norte',
+                ),
+                validator: _requiredValidator,
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: restDays,
+                keyboardType: TextInputType.number,
+                textInputAction: TextInputAction.done,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(
+                  labelText: 'Descanso requerido del primer potrero',
+                  suffixText: 'días',
+                  helperText:
+                      'Podrás cambiar este valor más adelante desde Potreros.',
+                  helperMaxLines: 2,
+                ),
+                validator: _positiveIntegerValidator,
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                height: 56,
+                child: FilledButton(
+                  onPressed: () async {
+                    if (!formKey.currentState!.validate()) return;
+
+                    FocusScope.of(context).unfocus();
+
+                    await ref
+                        .read(onboardingViewModelProvider.notifier)
+                        .configure(
+                          name.text.trim(),
+                          location.text.trim(),
+                          paddock.text.trim(),
+                          int.parse(restDays.text.trim()),
+                        );
+                  },
+                  child: const Text(
+                    'Guardar y comenzar',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
       ),
     );
   }

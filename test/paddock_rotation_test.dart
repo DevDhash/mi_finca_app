@@ -2,11 +2,161 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mi_finca_app/features/animals/domain/entities/animal.dart';
 import 'package:mi_finca_app/features/paddocks/data/models/paddock_model.dart';
 import 'package:mi_finca_app/features/paddocks/domain/entities/paddock.dart';
+import 'package:mi_finca_app/features/paddocks/domain/services/paddock_operational_status.dart';
 import 'package:mi_finca_app/features/paddocks/domain/usecases/calculate_paddock_rotation.dart';
 
 void main() {
   final referenceDate = DateTime(2026, 7, 20);
   const calculate = CalculatePaddockRotation();
+
+  group('PaddockOperationalStatus', () {
+    PaddockOperationalStatus status(Paddock paddock, [DateTime? date]) =>
+        PaddockOperationalStatus.calculate(
+          paddock,
+          referenceDate: date ?? DateTime(2026, 8, 24, 8),
+        );
+
+    test('keeps pending rest unavailable', () {
+      final result = status(
+        _paddock(
+          id: 'p1',
+          name: 'Pendiente',
+          status: 'Descansando',
+          requiredRestDays: 30,
+          lastGrazingEndDate: DateTime(2026, 8, 14),
+        ),
+      );
+      expect(result.effectiveStatus, 'Descansando');
+      expect(result.elapsedRestDays, 10);
+      expect(result.remainingRestDays, 20);
+      expect(result.canReceiveAnimals, isFalse);
+    });
+
+    test('makes exact and exceeded rest available', () {
+      final exact = status(
+        _paddock(
+          id: 'p1',
+          name: 'Exacto',
+          status: 'Descansando',
+          requiredRestDays: 30,
+          lastGrazingEndDate: DateTime(2026, 7, 25),
+        ),
+      );
+      final exceeded = status(
+        _paddock(
+          id: 'p2',
+          name: 'Excedido',
+          status: 'Descansando',
+          requiredRestDays: 30,
+          lastGrazingEndDate: DateTime(2026, 7, 20),
+        ),
+      );
+      expect(exact.remainingRestDays, 0);
+      expect(exact.effectiveStatus, 'Disponible');
+      expect(exact.canReceiveAnimals, isTrue);
+      expect(exceeded.remainingRestDays, -5);
+      expect(exceeded.canReceiveAnimals, isTrue);
+    });
+
+    test('counts calendar days instead of complete 24-hour blocks', () {
+      final result = status(
+        _paddock(
+          id: 'p1',
+          name: 'Calendario',
+          status: 'Descansando',
+          requiredRestDays: 1,
+          lastGrazingEndDate: DateTime(2026, 8, 24, 17),
+        ),
+        DateTime(2026, 8, 25, 8),
+      );
+      expect(result.elapsedRestDays, 1);
+      expect(result.canReceiveAnimals, isTrue);
+    });
+
+    test('incomplete legacy rest records remain unavailable', () {
+      final withoutDays = status(
+        _paddock(id: 'p1', name: 'Sin días', status: 'Descansando'),
+      );
+      final withoutDate = status(
+        _paddock(
+          id: 'p2',
+          name: 'Sin fecha',
+          status: 'Descansando',
+          requiredRestDays: 30,
+        ),
+      );
+      expect(withoutDays.canReceiveAnimals, isFalse);
+      expect(withoutDate.canReceiveAnimals, isFalse);
+      expect(withoutDays.effectiveStatus, 'Descansando');
+    });
+
+    test('new available paddock is ready and exhausted never is', () {
+      expect(
+        status(_paddock(id: 'p1', name: 'Nuevo')).canReceiveAnimals,
+        isTrue,
+      );
+      final exhausted = status(
+        _paddock(id: 'p2', name: 'Agotado', status: 'Agotado'),
+      );
+      expect(exhausted.effectiveStatus, 'Agotado');
+      expect(exhausted.canReceiveAnimals, isFalse);
+    });
+
+    test('available label cannot bypass a provable pending rest', () {
+      final result = status(
+        _paddock(
+          id: 'p1',
+          name: 'Inconsistente',
+          status: 'Disponible',
+          requiredRestDays: 30,
+          lastGrazingEndDate: DateTime(2026, 8, 14),
+        ),
+      );
+      expect(result.effectiveStatus, 'Descansando');
+      expect(result.canReceiveAnimals, isFalse);
+    });
+
+    test('movement rule blocks pending rest and allows completed rest', () {
+      final pending = status(
+        _paddock(
+          id: 'p1',
+          name: 'Pendiente',
+          status: 'Descansando',
+          requiredRestDays: 30,
+          lastGrazingEndDate: DateTime(2026, 8, 14),
+        ),
+      );
+      final ready = status(
+        _paddock(
+          id: 'p2',
+          name: 'Listo',
+          status: 'Descansando',
+          requiredRestDays: 30,
+          lastGrazingEndDate: DateTime(2026, 7, 25),
+        ),
+      );
+      expect(pending.canReceiveAnimals, isFalse);
+      expect(ready.canReceiveAnimals, isTrue);
+    });
+
+    test('copyWith explicitly clears nullable rotation fields', () {
+      final original = _paddock(
+        id: 'p1',
+        name: 'Activo',
+        grazingStartDate: DateTime(2026, 8, 20),
+        plannedGrazingDays: 7,
+        lastGrazingEndDate: DateTime(2026, 8, 10),
+      );
+      final cleared = original.copyWith(
+        grazingStartDate: null,
+        plannedGrazingDays: null,
+        lastGrazingEndDate: null,
+      );
+      expect(cleared.grazingStartDate, isNull);
+      expect(cleared.plannedGrazingDays, isNull);
+      expect(cleared.lastGrazingEndDate, isNull);
+    });
+  });
 
   group('CalculatePaddockRotation', () {
     test('returns the active paddock with the real animal count', () {

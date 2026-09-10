@@ -5,6 +5,7 @@ import 'package:mi_finca_app/core/constants/app_images.dart';
 import 'package:mi_finca_app/core/widgets/common_widgets.dart';
 import 'package:mi_finca_app/features/animals/presentation/viewmodels/animal_view_model.dart';
 import 'package:mi_finca_app/features/paddocks/domain/entities/paddock.dart';
+import 'package:mi_finca_app/features/paddocks/domain/services/paddock_operational_status.dart';
 import 'package:mi_finca_app/features/paddocks/presentation/viewmodels/paddock_view_model.dart';
 import 'package:uuid/uuid.dart';
 
@@ -851,23 +852,23 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
               ),
               const SizedBox(height: 14),
             ],
-            ListTile(
-              enabled: status != 'En uso',
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.event_available_outlined),
-              title: const Text('Fecha de salida del ganado'),
-              subtitle: Text(
-                status == 'En uso'
-                    ? 'No aplica mientras el potrero está en uso'
-                    : lastGrazingEndDate == null
-                    ? 'Sin fecha registrada'
-                    : MaterialLocalizations.of(
-                        context,
-                      ).formatMediumDate(lastGrazingEndDate!),
+            if (status == 'Descansando' ||
+                (widget.paddock != null && lastGrazingEndDate != null))
+              ListTile(
+                enabled: status == 'Descansando',
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.event_available_outlined),
+                title: const Text('Fecha de salida del ganado'),
+                subtitle: Text(
+                  lastGrazingEndDate == null
+                      ? 'Sin fecha registrada'
+                      : MaterialLocalizations.of(
+                          context,
+                        ).formatMediumDate(lastGrazingEndDate!),
+                ),
+                trailing: const Icon(Icons.calendar_month_outlined),
+                onTap: status == 'Descansando' ? pickLastGrazingEndDate : null,
               ),
-              trailing: const Icon(Icons.calendar_month_outlined),
-              onTap: pickLastGrazingEndDate,
-            ),
             const SizedBox(height: 14),
             DropdownButtonFormField<String>(
               value: status,
@@ -958,11 +959,24 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
 
     final requiredRestDays = int.tryParse(restDays.text.trim());
 
+    if (status == 'Descansando' &&
+        (requiredRestDays == null || requiredRestDays <= 0)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Configura el descanso requerido')),
+      );
+      return;
+    }
+    if (status == 'Descansando' &&
+        (lastGrazingEndDate == null || lastGrazingEndDate!.isAfter(now))) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Registra una fecha de salida válida')),
+      );
+      return;
+    }
+
     final plannedDays = int.tryParse(plannedGrazingDays.text.trim());
 
-    final grazingEndDate = status == 'En uso'
-        ? null
-        : lastGrazingEndDate ?? (old?.status == 'En uso' ? now : null);
+    final grazingEndDate = status == 'En uso' ? null : lastGrazingEndDate;
 
     final activeStartDate = status == 'En uso' ? grazingStartDate ?? now : null;
 
@@ -1137,52 +1151,25 @@ class PaddockDetailScreen extends ConsumerWidget {
   }
 }
 
-class _PaddockRestStatus {
-  const _PaddockRestStatus({
-    required this.elapsedDays,
-    required this.remainingDays,
-  });
-
-  final int? elapsedDays;
-  final int? remainingDays;
-
-  bool get hasRestPlan {
-    return elapsedDays != null && remainingDays != null;
-  }
-
-  bool get isReady {
-    return hasRestPlan && remainingDays! <= 0;
-  }
-}
-
-_PaddockRestStatus _paddockRestStatus(Paddock paddock, DateTime referenceDate) {
-  final requiredRestDays = paddock.requiredRestDays;
-  final lastGrazingEndDate = paddock.lastGrazingEndDate;
-
-  if (requiredRestDays == null ||
-      requiredRestDays <= 0 ||
-      lastGrazingEndDate == null ||
-      lastGrazingEndDate.isAfter(referenceDate)) {
-    return const _PaddockRestStatus(elapsedDays: null, remainingDays: null);
-  }
-
-  final elapsedDays = referenceDate.difference(lastGrazingEndDate).inDays;
-
-  return _PaddockRestStatus(
-    elapsedDays: elapsedDays,
-    remainingDays: requiredRestDays - elapsedDays,
+PaddockOperationalStatus _paddockRestStatus(
+  Paddock paddock,
+  DateTime referenceDate,
+) {
+  return PaddockOperationalStatus.calculate(
+    paddock,
+    referenceDate: referenceDate,
   );
 }
 
-String _paddockDisplayStatus(Paddock paddock, _PaddockRestStatus restStatus) {
-  if (paddock.status == 'Descansando' && restStatus.isReady) {
-    return 'Disponible';
-  }
+String _paddockDisplayStatus(
+  Paddock paddock,
+  PaddockOperationalStatus restStatus,
+) => restStatus.effectiveStatus;
 
-  return paddock.status;
-}
-
-String _paddockRestSummary(Paddock paddock, _PaddockRestStatus restStatus) {
+String _paddockRestSummary(
+  Paddock paddock,
+  PaddockOperationalStatus restStatus,
+) {
   if (paddock.status == 'En uso') {
     return '';
   }
@@ -1191,11 +1178,12 @@ String _paddockRestSummary(Paddock paddock, _PaddockRestStatus restStatus) {
     return 'Fuera de rotación';
   }
 
-  if (paddock.status == 'Disponible') {
+  if (restStatus.effectiveStatus == 'Disponible' &&
+      !restStatus.hasValidRestPlan) {
     return 'Listo para recibir ganado';
   }
 
-  if (!restStatus.hasRestPlan) {
+  if (!restStatus.hasValidRestPlan) {
     return 'Descanso sin configurar';
   }
 
@@ -1224,12 +1212,12 @@ Future<void> _showAdjustRestDialog({
   required BuildContext context,
   required WidgetRef ref,
   required Paddock paddock,
-  required _PaddockRestStatus restStatus,
+  required PaddockOperationalStatus restStatus,
 }) async {
   final controller = TextEditingController(
     text:
         paddock.requiredRestDays?.toString() ??
-        ((restStatus.elapsedDays ?? 0) + 7).toString(),
+        ((restStatus.elapsedRestDays ?? 0) + 7).toString(),
   );
 
   final formKey = GlobalKey<FormState>();
@@ -1306,13 +1294,10 @@ Future<void> _showAdjustRestDialog({
 }
 
 int? _elapsedRestDays(Paddock paddock, DateTime referenceDate) {
-  final lastGrazingEndDate = paddock.lastGrazingEndDate;
-
-  if (lastGrazingEndDate == null) {
-    return null;
-  }
-
-  return referenceDate.difference(lastGrazingEndDate).inDays;
+  return PaddockOperationalStatus.calculate(
+    paddock,
+    referenceDate: referenceDate,
+  ).elapsedRestDays;
 }
 
 String _activeGrazingStatusText(Paddock paddock, DateTime referenceDate) {

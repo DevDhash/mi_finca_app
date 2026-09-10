@@ -67,15 +67,19 @@ class ConnectivityBanner extends StatelessWidget {
 class EmptyState extends StatelessWidget {
   const EmptyState({
     super.key,
-    required this.icon,
+    this.icon,
+    this.imagePath,
     required this.message,
     required this.actionLabel,
     required this.onAction,
   });
-  final IconData icon;
+
+  final IconData? icon;
+  final String? imagePath;
   final String message;
   final String actionLabel;
   final VoidCallback onAction;
+
   @override
   Widget build(BuildContext context) => Center(
     child: Padding(
@@ -83,15 +87,34 @@ class EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 68, color: AppColors.primary),
+          if (imagePath != null)
+            Image.asset(
+              imagePath!,
+              width: 90,
+              height: 90,
+              fit: BoxFit.contain,
+            )
+          else if (icon != null)
+            Icon(
+              icon,
+              size: 68,
+              color: AppColors.primary,
+            ),
+
           const SizedBox(height: 16),
+
           Text(
             message,
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 16),
           ),
+
           const SizedBox(height: 20),
-          FilledButton(onPressed: onAction, child: Text(actionLabel)),
+
+          FilledButton(
+            onPressed: onAction,
+            child: Text(actionLabel),
+          ),
         ],
       ),
     ),

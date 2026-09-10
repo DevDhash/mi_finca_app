@@ -19,6 +19,10 @@ final class AppDatabase extends GeneratedDatabase {
   final _recordChanges = StreamController<void>.broadcast();
   Stream<void> get recordChanges => _recordChanges.stream;
 
+  Future<T> runInTransaction<T>(Future<T> Function() action) {
+    return transaction(action);
+  }
+
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (migrator) async {

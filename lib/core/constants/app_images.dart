@@ -21,8 +21,12 @@ class AppImages {
   static const String iconVacuna = 'assets/images/icon_vacuna.png';
   static const String iconMovimientoGanado =
       'assets/images/icon_movimiento_ganado.png';
-
   static const String miFincaIcono = 'assets/images/mi_finca_icono.png';
-  static const String bannerRotacionPotreros = 'assets/images/banner_rotacion_potreros.png';
-  static const String iconOrdenRotacion = 'assets/images/icon_orden_rotacion.png';
+  static const String bannerRotacionPotreros =
+      'assets/images/banner_rotacion_potreros.png';
+  static const String iconOrdenRotacion =
+      'assets/images/icon_orden_rotacion.png';
+  static const String iconoMoverLote = 'assets/images/icono_mover_lote.png';
+  static const String iconoAgregarAnimal =
+      'assets/images/icono_agregar_animal.png';
 }

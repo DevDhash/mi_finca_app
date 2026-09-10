@@ -10,6 +10,7 @@ import 'package:mi_finca_app/features/expenses/presentation/expense_screens.dart
 import 'package:mi_finca_app/features/expenses/presentation/viewmodels/expense_view_model.dart';
 import 'package:mi_finca_app/features/farm/presentation/viewmodels/farm_view_model.dart';
 import 'package:mi_finca_app/features/paddocks/domain/entities/paddock.dart';
+import 'package:mi_finca_app/features/paddocks/domain/services/paddock_operational_status.dart';
 import 'package:mi_finca_app/features/paddocks/presentation/screens/paddock_screens.dart';
 import 'package:mi_finca_app/features/paddocks/domain/usecases/calculate_paddock_rotation.dart';
 import 'package:mi_finca_app/features/paddocks/presentation/viewmodels/paddock_view_model.dart';
@@ -1063,21 +1064,10 @@ String _grazingAlertBody(ActivePaddockRotation active) {
 }
 
 bool _isPaddockAvailableNow(Paddock paddock, DateTime referenceDate) {
-  if (paddock.status == 'Disponible') return true;
-  if (paddock.status != 'Descansando') return false;
-
-  final requiredRestDays = paddock.requiredRestDays;
-  final lastGrazingEndDate = paddock.lastGrazingEndDate;
-  if (requiredRestDays == null ||
-      requiredRestDays <= 0 ||
-      lastGrazingEndDate == null ||
-      lastGrazingEndDate.isAfter(referenceDate)) {
-    return false;
-  }
-
-  return requiredRestDays -
-          referenceDate.difference(lastGrazingEndDate).inDays <=
-      0;
+  return PaddockOperationalStatus.calculate(
+    paddock,
+    referenceDate: referenceDate,
+  ).canReceiveAnimals;
 }
 
 bool _needsRotationOrder(List<Paddock> paddocks) {
@@ -1211,7 +1201,7 @@ class IndicatorsScreen extends ConsumerWidget {
       ),
       (
         'Potreros libres',
-        '${paddocks.where((p) => p.status == 'Disponible').length}',
+        '${paddocks.where((p) => _isPaddockAvailableNow(p, DateTime.now())).length}',
         AppImages.iconPasto,
       ),
       (

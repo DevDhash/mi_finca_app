@@ -9,6 +9,9 @@ import 'package:mi_finca_app/features/animals/domain/entities/animal.dart';
 import 'package:mi_finca_app/features/animals/domain/entities/movement.dart';
 import 'package:mi_finca_app/features/animals/domain/repositories/animal_repository.dart';
 import 'package:mi_finca_app/features/animals/domain/usecases/move_animal.dart';
+import 'package:mi_finca_app/features/paddocks/domain/entities/paddock.dart';
+import 'package:mi_finca_app/features/paddocks/domain/services/paddock_operational_status.dart';
+import 'package:mi_finca_app/features/paddocks/presentation/viewmodels/paddock_view_model.dart';
 import 'package:mi_finca_app/features/sync/presentation/viewmodels/sync_view_model.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -75,43 +78,93 @@ class AnimalViewModel extends AsyncNotifier<AnimalState> {
     unawaited(ref.read(syncViewModelProvider.notifier).syncPendingIfOnline());
   }
 
-  Future<void> move(Animal animal, String destinationId, DateTime date) async {
-    final result = await ref.read(moveAnimalProvider)(
-      animal,
+  Future<void> move(
+    Animal animal,
+    String destinationId,
+    DateTime date, {
+    int? plannedGrazingDays,
+  }) async {
+    await moveMany(
+      [animal],
       destinationId,
       date,
+      plannedGrazingDays: plannedGrazingDays,
     );
-
-    final animals = state.requireValue.animals
-        .map((item) => item.id == result.animal.id ? result.animal : item)
-        .toList();
-
-    state = AsyncData(
-      state.requireValue.copyWith(
-        animals: animals,
-        movements: [result.movement, ...state.requireValue.movements],
-      ),
-    );
-
-    unawaited(ref.read(syncViewModelProvider.notifier).syncPendingIfOnline());
   }
 
   Future<int> moveMany(
     List<Animal> selectedAnimals,
     String destinationId,
-    DateTime date,
-  ) async {
+    DateTime date, {
+    int? plannedGrazingDays,
+  }) async {
     final movableAnimals = selectedAnimals
         .where((animal) => animal.paddockId != destinationId)
         .toList();
     if (movableAnimals.isEmpty) return 0;
 
+    final currentAnimals = state.requireValue.animals;
+    final paddocks = ref.read(paddockViewModelProvider).requireValue;
+    final destination = paddocks.firstWhere(
+      (paddock) => paddock.id == destinationId,
+    );
+    if (!PaddockOperationalStatus.calculate(
+      destination,
+      referenceDate: date,
+    ).canReceiveAnimals) {
+      throw StateError('El potrero destino todavía no puede recibir animales.');
+    }
+    final destinationWasEmpty = !currentAnimals.any(
+      (animal) => animal.paddockId == destinationId,
+    );
+    if (destinationWasEmpty && plannedGrazingDays == null) {
+      throw const FormatException(
+        'Indica los días de uso planeado para el potrero destino.',
+      );
+    }
+
     final results = <({Animal animal, Movement movement})>[];
     final moveAnimal = ref.read(moveAnimalProvider);
+    final movedIds = movableAnimals.map((animal) => animal.id).toSet();
+    final finalAnimals = currentAnimals
+        .map(
+          (animal) => movedIds.contains(animal.id)
+              ? animal.copyWith(paddockId: destinationId)
+              : animal,
+        )
+        .toList();
+    final affectedOriginIds = movableAnimals
+        .map((animal) => animal.paddockId)
+        .whereType<String>()
+        .where((id) => id != destinationId)
+        .toSet();
+    final updatedPaddocks = <Paddock>[
+      for (final paddock in paddocks)
+        if (affectedOriginIds.contains(paddock.id))
+          _updatedOriginPaddock(
+            paddock,
+            hasAnimals: finalAnimals.any(
+              (animal) => animal.paddockId == paddock.id,
+            ),
+            movementDate: date,
+          ),
+      _updatedDestinationPaddock(
+        destination,
+        wasEmpty: destinationWasEmpty,
+        movementDate: date,
+        plannedGrazingDays: plannedGrazingDays,
+      ),
+    ];
 
-    for (final animal in movableAnimals) {
-      results.add(await moveAnimal(animal, destinationId, date));
-    }
+    await ref.read(databaseProvider).runInTransaction(() async {
+      for (final animal in movableAnimals) {
+        results.add(await moveAnimal(animal, destinationId, date));
+      }
+      final paddockRepository = ref.read(paddockRepositoryProvider);
+      for (final paddock in updatedPaddocks) {
+        await paddockRepository.save(paddock);
+      }
+    });
 
     final movedById = {for (final result in results) result.animal.id: result};
     final animals = state.requireValue.animals
@@ -125,6 +178,9 @@ class AnimalViewModel extends AsyncNotifier<AnimalState> {
     state = AsyncData(
       state.requireValue.copyWith(animals: animals, movements: movements),
     );
+    ref
+        .read(paddockViewModelProvider.notifier)
+        .applyPersistedMovementUpdates(updatedPaddocks);
 
     unawaited(ref.read(syncViewModelProvider.notifier).syncPendingIfOnline());
 
@@ -141,4 +197,51 @@ class AnimalViewModel extends AsyncNotifier<AnimalState> {
       ),
     );
   }
+}
+
+Paddock _updatedOriginPaddock(
+  Paddock paddock, {
+  required bool hasAnimals,
+  required DateTime movementDate,
+}) {
+  if (hasAnimals) {
+    return paddock.copyWith(status: 'En uso', updatedAt: DateTime.now());
+  }
+
+  return Paddock(
+    id: paddock.id,
+    name: paddock.name,
+    areaHectares: paddock.areaHectares,
+    pastureType: paddock.pastureType,
+    requiredRestDays: paddock.requiredRestDays,
+    rotationOrder: paddock.rotationOrder,
+    status: 'Descansando',
+    lastGrazingEndDate: movementDate,
+    createdAt: paddock.createdAt,
+    updatedAt: DateTime.now(),
+  );
+}
+
+Paddock _updatedDestinationPaddock(
+  Paddock paddock, {
+  required bool wasEmpty,
+  required DateTime movementDate,
+  required int? plannedGrazingDays,
+}) {
+  return Paddock(
+    id: paddock.id,
+    name: paddock.name,
+    areaHectares: paddock.areaHectares,
+    pastureType: paddock.pastureType,
+    requiredRestDays: paddock.requiredRestDays,
+    rotationOrder: paddock.rotationOrder,
+    grazingStartDate: wasEmpty ? movementDate : paddock.grazingStartDate,
+    plannedGrazingDays: wasEmpty
+        ? plannedGrazingDays
+        : paddock.plannedGrazingDays,
+    status: 'En uso',
+    lastGrazingEndDate: null,
+    createdAt: paddock.createdAt,
+    updatedAt: DateTime.now(),
+  );
 }

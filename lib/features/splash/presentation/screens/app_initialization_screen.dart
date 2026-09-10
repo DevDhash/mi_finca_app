@@ -25,8 +25,7 @@ class AppInitializationScreen extends StatefulWidget {
       _AppInitializationScreenState();
 }
 
-class _AppInitializationScreenState
-    extends State<AppInitializationScreen> {
+class _AppInitializationScreenState extends State<AppInitializationScreen> {
   Object? _initializationError;
   bool _isInitializing = true;
 
@@ -49,13 +48,9 @@ class _AppInitializationScreenState
         widget.minimumDisplayDuration,
       );
 
-      final initialization = widget.initialize?.call() ??
-          Future<void>.value();
+      final initialization = widget.initialize?.call() ?? Future<void>.value();
 
-      await Future.wait<void>([
-        minimumDuration,
-        initialization,
-      ]);
+      await Future.wait<void>([minimumDuration, initialization]);
 
       if (!mounted) return;
 
@@ -86,15 +81,11 @@ class _AppInitializationScreenState
             alignment: Alignment.center,
             filterQuality: FilterQuality.high,
             errorBuilder: (context, error, stackTrace) {
-              return const ColoredBox(
-                color: Color(0xFFFBF8F0),
-              );
+              return const ColoredBox(color: Color(0xFFFBF8F0));
             },
           ),
           if (!_isInitializing && _initializationError != null)
-            _InitializationError(
-              onRetry: _initializeApp,
-            ),
+            _InitializationError(onRetry: _initializeApp),
         ],
       ),
     );
@@ -102,9 +93,7 @@ class _AppInitializationScreenState
 }
 
 class _InitializationError extends StatelessWidget {
-  const _InitializationError({
-    required this.onRetry,
-  });
+  const _InitializationError({required this.onRetry});
 
   final VoidCallback onRetry;
 

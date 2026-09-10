@@ -1,5 +1,6 @@
 import 'package:mi_finca_app/features/animals/domain/entities/animal.dart';
 import 'package:mi_finca_app/features/paddocks/domain/entities/paddock.dart';
+import 'package:mi_finca_app/features/paddocks/domain/services/paddock_operational_status.dart';
 
 class CalculatePaddockRotation {
   const CalculatePaddockRotation();
@@ -213,42 +214,32 @@ class NextPaddockRotation {
     required Paddock paddock,
     required DateTime referenceDate,
   }) {
-    if (paddock.status == 'Disponible') {
+    final operational = PaddockOperationalStatus.calculate(
+      paddock,
+      referenceDate: referenceDate,
+    );
+    if (operational.effectiveStatus == 'Disponible' &&
+        !operational.hasValidRestPlan) {
       return NextPaddockRotation(
         paddock: paddock,
         requiredRestDays: paddock.requiredRestDays ?? 0,
-        elapsedRestDays: _elapsedRestDays(paddock, referenceDate) ?? 0,
+        elapsedRestDays: 0,
         remainingRestDays: 0,
       );
     }
 
     final requiredRestDays = paddock.requiredRestDays;
-    final lastGrazingEndDate = paddock.lastGrazingEndDate;
-
-    if (requiredRestDays == null ||
-        requiredRestDays <= 0 ||
-        lastGrazingEndDate == null ||
-        lastGrazingEndDate.isAfter(referenceDate)) {
+    if (!operational.hasValidRestPlan || requiredRestDays == null) {
       return null;
     }
 
-    final elapsedRestDays = referenceDate.difference(lastGrazingEndDate).inDays;
+    final elapsedRestDays = operational.elapsedRestDays!;
 
     return NextPaddockRotation(
       paddock: paddock,
       requiredRestDays: requiredRestDays,
       elapsedRestDays: elapsedRestDays,
-      remainingRestDays: requiredRestDays - elapsedRestDays,
+      remainingRestDays: operational.remainingRestDays!,
     );
-  }
-
-  static int? _elapsedRestDays(Paddock paddock, DateTime referenceDate) {
-    final lastGrazingEndDate = paddock.lastGrazingEndDate;
-    if (lastGrazingEndDate == null ||
-        lastGrazingEndDate.isAfter(referenceDate)) {
-      return null;
-    }
-
-    return referenceDate.difference(lastGrazingEndDate).inDays;
   }
 }

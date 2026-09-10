@@ -1,5 +1,7 @@
 import 'package:mi_finca_app/core/domain/sync_status.dart';
 
+const _notProvided = Object();
+
 class Paddock {
   const Paddock({
     required this.id,
@@ -40,29 +42,44 @@ class Paddock {
   Paddock copyWith({
     String? name,
     double? areaHectares,
-    String? grassType,
-    String? pastureType,
-    int? requiredRestDays,
-    int? rotationOrder,
-    DateTime? grazingStartDate,
-    int? plannedGrazingDays,
+    Object? grassType = _notProvided,
+    Object? pastureType = _notProvided,
+    Object? requiredRestDays = _notProvided,
+    Object? rotationOrder = _notProvided,
+    Object? grazingStartDate = _notProvided,
+    Object? plannedGrazingDays = _notProvided,
     String? status,
-    DateTime? lastUsedAt,
-    DateTime? lastGrazingEndDate,
+    Object? lastUsedAt = _notProvided,
+    Object? lastGrazingEndDate = _notProvided,
     DateTime? updatedAt,
     SyncStatus? syncStatus,
   }) => Paddock(
     id: id,
     name: name ?? this.name,
     areaHectares: areaHectares ?? this.areaHectares,
-    pastureType: pastureType ?? grassType ?? this.pastureType,
-    requiredRestDays: requiredRestDays ?? this.requiredRestDays,
-    rotationOrder: rotationOrder ?? this.rotationOrder,
-    grazingStartDate: grazingStartDate ?? this.grazingStartDate,
-    plannedGrazingDays: plannedGrazingDays ?? this.plannedGrazingDays,
+    pastureType: pastureType != _notProvided
+        ? pastureType as String?
+        : grassType != _notProvided
+        ? grassType as String?
+        : this.pastureType,
+    requiredRestDays: requiredRestDays == _notProvided
+        ? this.requiredRestDays
+        : requiredRestDays as int?,
+    rotationOrder: rotationOrder == _notProvided
+        ? this.rotationOrder
+        : rotationOrder as int?,
+    grazingStartDate: grazingStartDate == _notProvided
+        ? this.grazingStartDate
+        : grazingStartDate as DateTime?,
+    plannedGrazingDays: plannedGrazingDays == _notProvided
+        ? this.plannedGrazingDays
+        : plannedGrazingDays as int?,
     status: status ?? this.status,
-    lastGrazingEndDate:
-        lastGrazingEndDate ?? lastUsedAt ?? this.lastGrazingEndDate,
+    lastGrazingEndDate: lastGrazingEndDate != _notProvided
+        ? lastGrazingEndDate as DateTime?
+        : lastUsedAt != _notProvided
+        ? lastUsedAt as DateTime?
+        : this.lastGrazingEndDate,
     createdAt: createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     syncStatus: syncStatus ?? this.syncStatus,
