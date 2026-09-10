@@ -14,6 +14,7 @@ import 'package:mi_finca_app/features/paddocks/domain/services/paddock_operation
 import 'package:mi_finca_app/features/paddocks/presentation/screens/paddock_screens.dart';
 import 'package:mi_finca_app/features/paddocks/domain/usecases/calculate_paddock_rotation.dart';
 import 'package:mi_finca_app/features/paddocks/presentation/viewmodels/paddock_view_model.dart';
+import 'package:mi_finca_app/features/profile/presentation/screens/profile_screen.dart';
 import 'package:mi_finca_app/features/sync/presentation/viewmodels/sync_view_model.dart';
 import 'package:mi_finca_app/core/formatters/currency_formatter.dart';
 
@@ -1450,89 +1451,6 @@ class _SyncInfoRow extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class ProfileScreen extends ConsumerWidget {
-  const ProfileScreen({super.key});
-
-  Future<void> _requestSignOut(BuildContext context, WidgetRef ref) async {
-    final pendingChanges = await ref
-        .read(syncRepositoryProvider)
-        .pendingCount();
-
-    if (!context.mounted) return;
-
-    final shouldSignOut =
-        pendingChanges == 0 ||
-        await showDialog<bool>(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('Cambios sin sincronizar'),
-                content: const Text(
-                  'Hay cambios sin sincronizar. Si cierras sesión ahora, se perderán de este dispositivo.',
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    child: const Text('Cancelar'),
-                  ),
-                  FilledButton(
-                    onPressed: () => Navigator.of(context).pop(true),
-                    child: const Text('Cerrar sesión'),
-                  ),
-                ],
-              ),
-            ) ==
-            true;
-
-    if (!shouldSignOut || !context.mounted) return;
-
-    await ref.read(authViewModelProvider.notifier).signOut();
-
-    if (!context.mounted) return;
-
-    Navigator.of(
-      context,
-      rootNavigator: true,
-    ).popUntil((route) => route.isFirst);
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final session = ref.watch(authViewModelProvider).requireValue;
-    final farm = ref.watch(farmViewModelProvider).requireValue;
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Perfil y ajustes')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          const CircleAvatar(radius: 42, child: Icon(Icons.person, size: 42)),
-          const SizedBox(height: 14),
-          Text(
-            session?.name ?? '',
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          ),
-          Text(session?.email ?? '', textAlign: TextAlign.center),
-          const SizedBox(height: 24),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.landscape),
-              title: Text(farm?.name ?? ''),
-              subtitle: Text(farm?.location ?? ''),
-            ),
-          ),
-          const SizedBox(height: 24),
-          OutlinedButton.icon(
-            onPressed: () => _requestSignOut(context, ref),
-            icon: const Icon(Icons.logout),
-            label: const Text('Cerrar sesión'),
-          ),
-        ],
-      ),
     );
   }
 }
