@@ -4,6 +4,9 @@ import 'package:intl/intl.dart';
 import 'package:mi_finca_app/app/theme/app_theme.dart';
 import 'package:mi_finca_app/core/widgets/common_widgets.dart';
 import 'package:mi_finca_app/features/expenses/domain/entities/expense.dart';
+import 'package:mi_finca_app/features/expenses/domain/constants/expense_categories.dart';
+import 'package:mi_finca_app/features/expenses/domain/validators/expense_amount.dart';
+import 'package:mi_finca_app/features/expenses/presentation/formatters/expense_amount_input_formatter.dart';
 import 'package:mi_finca_app/features/expenses/presentation/viewmodels/expense_view_model.dart';
 import 'package:uuid/uuid.dart';
 
@@ -122,8 +125,9 @@ class ExpenseFormScreen extends ConsumerStatefulWidget {
 class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
   final amount = TextEditingController();
   final note = TextEditingController();
-  String category = 'Alimento';
-  DateTime date = DateTime.now();
+  String category = expenseCategories.first;
+  DateTime date = DateUtils.dateOnly(DateTime.now());
+  bool _isSaving = false;
   @override
   void dispose() {
     amount.dispose();
@@ -141,22 +145,22 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
         Wrap(
           spacing: 8,
           runSpacing: 8,
-          children:
-              ['Alimento', 'Medicina', 'Mano de obra', 'Mantenimiento', 'Otros']
-                  .map(
-                    (v) => ChoiceChip(
-                      label: Text(v),
-                      selected: category == v,
-                      onSelected: (_) => setState(() => category = v),
-                    ),
-                  )
-                  .toList(),
+          children: expenseCategories
+              .map(
+                (v) => ChoiceChip(
+                  label: Text(v),
+                  selected: category == v,
+                  onSelected: (_) => setState(() => category = v),
+                ),
+              )
+              .toList(),
         ),
         const SizedBox(height: 20),
         TextField(
           controller: amount,
           autofocus: true,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [ExpenseAmountInputFormatter()],
           decoration: const InputDecoration(
             labelText: 'Monto',
             prefixText: 'S/ ',
@@ -178,7 +182,9 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
               lastDate: DateTime.now(),
               initialDate: date,
             );
-            if (d != null) setState(() => date = d);
+            if (d != null && mounted) {
+              setState(() => date = DateUtils.dateOnly(d));
+            }
           },
         ),
         const SizedBox(height: 14),
@@ -188,36 +194,60 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
           decoration: const InputDecoration(labelText: 'Nota opcional'),
         ),
         const SizedBox(height: 24),
-        FilledButton(onPressed: save, child: const Text('Guardar gasto')),
+        FilledButton(
+          onPressed: _isSaving ? null : save,
+          child: _isSaving
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Guardar gasto'),
+        ),
       ],
     ),
   );
   Future<void> save() async {
-    final value = double.tryParse(amount.text.replaceAll(',', '.'));
-    if (value == null || value <= 0) {
+    if (_isSaving) return;
+    final value = parseExpenseAmount(amount.text);
+    if (value == null) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Ingresa un monto válido')));
       return;
     }
-    final now = DateTime.now();
-    await ref
-        .read(expenseViewModelProvider.notifier)
-        .save(
-          Expense(
-            id: const Uuid().v4(),
-            category: category,
-            amount: value,
-            date: date,
-            note: note.text.trim(),
-            updatedAt: now,
+    setState(() => _isSaving = true);
+    try {
+      final now = DateTime.now();
+      await ref
+          .read(expenseViewModelProvider.notifier)
+          .save(
+            Expense(
+              id: const Uuid().v4(),
+              category: category,
+              amount: value,
+              date: date,
+              note: note.text.trim(),
+              updatedAt: now,
+            ),
+          );
+      if (mounted) {
+        final messenger = ScaffoldMessenger.of(context);
+        Navigator.pop(context);
+        messenger.showSnackBar(
+          const SnackBar(content: Text('✓ Gasto registrado')),
+        );
+      }
+    } catch (error, stackTrace) {
+      debugPrint('No se pudo guardar el gasto: $error\n$stackTrace');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo guardar el gasto. Inténtalo de nuevo.'),
           ),
         );
-    if (mounted) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('✓ Gasto registrado')));
+        setState(() => _isSaving = false);
+      }
     }
   }
 }

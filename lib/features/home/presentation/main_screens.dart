@@ -1130,13 +1130,6 @@ class MoreScreen extends ConsumerWidget {
         ),
         _item(
           context,
-          Icons.insights,
-          'Indicadores',
-          'Una vista simple de tu finca',
-          const IndicatorsScreen(),
-        ),
-        _item(
-          context,
           Icons.cloud_sync,
           'Sincronización',
           'Conexión y cambios pendientes',
@@ -1178,64 +1171,6 @@ class MoreScreen extends ConsumerWidget {
   );
 }
 
-class IndicatorsScreen extends ConsumerWidget {
-  const IndicatorsScreen({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final animals = ref.watch(animalViewModelProvider).requireValue.animals;
-    final paddocks = ref.watch(paddockViewModelProvider).requireValue;
-    final monthlyTotal = ref.watch(monthlyExpenseTotalProvider);
-    final sync = ref.watch(syncViewModelProvider).requireValue;
-
-    final avg = animals.where((a) => a.weight != null).toList();
-    final average = avg.isEmpty
-        ? 0
-        : avg.fold<double>(0, (s, a) => s + a.weight!) / avg.length;
-
-    final values = [
-      ('Animales', '${animals.length}', AppImages.iconVaca),
-      (
-        'Costos del mes',
-        CurrencyFormatter.compactSoles(monthlyTotal),
-        AppImages.iconGastos,
-      ),
-      (
-        'Potreros libres',
-        '${paddocks.where((p) => _isPaddockAvailableNow(p, DateTime.now())).length}',
-        AppImages.iconPasto,
-      ),
-      (
-        'Animales enfermos',
-        '${animals.where((a) => a.status == 'Enfermo').length}',
-        AppImages.iconVacuna,
-      ),
-      ('Peso promedio', '${average.toStringAsFixed(0)} kg', AppImages.iconToro),
-      ('Cambios pendientes', '${sync.pendingChanges}', null),
-    ];
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Indicadores')),
-      body: GridView.count(
-        crossAxisCount: 2,
-        childAspectRatio: 1.05,
-        padding: const EdgeInsets.all(16),
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        children: values
-            .map(
-              (v) => _Metric(
-                iconPath: v.$3,
-                icon: v.$3 == null ? Icons.cloud_upload : null,
-                value: v.$2,
-                label: v.$1,
-              ),
-            )
-            .toList(),
-      ),
-    );
-  }
-}
 
 class SyncScreen extends ConsumerWidget {
   const SyncScreen({super.key});
