@@ -6,13 +6,29 @@ import 'package:mi_finca_app/features/farm/domain/entities/farm.dart';
 class FarmLocalDataSource {
   const FarmLocalDataSource(this._database);
   final AppDatabase _database;
+
   Future<Farm?> read() async {
-    final raw = await _database.readSetting('farm');
-    return raw == null
-        ? null
-        : FarmModel.fromJson(Map<String, Object?>.from(jsonDecode(raw) as Map));
+    final records = await _database.readRecords('farms');
+
+    if (records.isNotEmpty) {
+      return FarmModel.fromJson(records.first);
+    }
+
+    final legacyRaw = await _database.readSetting('farm');
+    if (legacyRaw == null) return null;
+
+    return FarmModel.fromJson(
+      Map<String, Object?>.from(jsonDecode(legacyRaw) as Map),
+    );
   }
 
-  Future<void> write(Farm farm) =>
-      _database.writeSetting('farm', jsonEncode(FarmModel.toJson(farm)));
+  Future<void> write(Farm farm, {bool pending = true}) {
+    return _database.putRecord(
+      'farms',
+      farm.id,
+      FarmModel.toJson(farm),
+      DateTime.now(),
+      pending: pending,
+    );
+  }
 }

@@ -10,6 +10,8 @@ class SupabaseSyncRemoteDataSource implements SyncRemoteDataSource {
   @override
   Future<void> pushRecord(PendingRecord record) async {
     switch (record.collection) {
+      case 'farms':
+        return _pushFarm(record.payload);
       case 'paddocks':
         return _pushPaddock(record.payload);
       case 'animals':
@@ -33,6 +35,17 @@ class SupabaseSyncRemoteDataSource implements SyncRemoteDataSource {
     }
 
     return user.id;
+  }
+
+  Future<void> _pushFarm(Map<String, Object?> payload) async {
+    final userId = await _currentUserId();
+
+    await _client.from('farms').upsert({
+      'id': payload['id'],
+      'user_id': userId,
+      'name': payload['name'],
+      'location': payload['location'],
+    });
   }
 
   Future<void> _pushPaddock(Map<String, Object?> payload) async {

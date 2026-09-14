@@ -18,14 +18,6 @@ class FarmRepositoryImpl implements FarmRepository {
     final localFarm = await _local.read();
 
     if (localFarm != null) {
-      try {
-        await _remote.upsertFarm(localFarm);
-      } catch (_) {
-        // Offline-first:
-
-        // Si Supabase falla, usamos la finca local sin romper la app.
-      }
-
       return localFarm;
     }
 
@@ -33,7 +25,7 @@ class FarmRepositoryImpl implements FarmRepository {
       final remoteFarm = await _remote.readCurrentUserFarm();
 
       if (remoteFarm != null) {
-        await _local.write(remoteFarm);
+        await _local.write(remoteFarm, pending: false);
       }
 
       return remoteFarm;
@@ -45,13 +37,5 @@ class FarmRepositoryImpl implements FarmRepository {
   @override
   Future<void> saveFarm(Farm farm) async {
     await _local.write(farm);
-
-    try {
-      await _remote.upsertFarm(farm);
-    } catch (_) {
-      // Offline-first:
-      // Si Supabase falla, mantenemos la finca guardada localmente.
-      // Luego conectaremos esto con el módulo de sync/outbox.
-    }
   }
 }

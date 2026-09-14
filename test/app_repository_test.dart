@@ -15,6 +15,8 @@ import 'package:mi_finca_app/features/expenses/data/datasources/expense_remote_d
 import 'package:mi_finca_app/features/expenses/data/repositories/expense_repository_impl.dart';
 import 'package:mi_finca_app/features/expenses/domain/entities/expense.dart';
 import 'package:mi_finca_app/features/farm/data/datasources/farm_local_datasource.dart';
+import 'package:mi_finca_app/features/farm/data/datasources/farm_remote_datasource.dart';
+import 'package:mi_finca_app/features/farm/data/repositories/farm_repository_impl.dart';
 import 'package:mi_finca_app/features/farm/domain/entities/farm.dart';
 import 'package:mi_finca_app/features/farm/domain/repositories/farm_repository.dart';
 import 'package:mi_finca_app/features/onboarding/domain/usecases/configure_farm.dart';
@@ -125,13 +127,40 @@ void main() {
       ),
     );
 
-    expect(await syncRepository.pendingCount(), 1);
+    expect(await syncRepository.pendingCount(), 2);
 
     await authRepository.signOut();
 
     expect(await authRepository.currentSession(), isNull);
     expect(await farmLocalDataSource.read(), isNull);
     expect(await animalRepository.getAll(), isEmpty);
+    expect(await syncRepository.pendingCount(), 0);
+  });
+
+  test('saves local farm changes as pending outbox records', () async {
+    final farmRepository = FarmRepositoryImpl(
+      local: FarmLocalDataSource(database),
+      remote: _FakeFarmRemoteDataSource(null, _testSupabaseClient()),
+    );
+
+    await farmRepository.saveFarm(
+      const Farm(id: 'f1', name: 'Finca Norte', location: 'Junin'),
+    );
+
+    expect(await syncRepository.pendingCount(), 1);
+  });
+
+  test('stores pulled remote farm without marking it pending', () async {
+    const farm = Farm(id: 'f1', name: 'Finca Norte', location: 'Junin');
+    final farmRepository = FarmRepositoryImpl(
+      local: FarmLocalDataSource(database),
+      remote: _FakeFarmRemoteDataSource(farm, _testSupabaseClient()),
+    );
+
+    final result = await farmRepository.getFarm();
+
+    expect(result?.id, farm.id);
+    expect(await FarmLocalDataSource(database).read(), isNotNull);
     expect(await syncRepository.pendingCount(), 0);
   });
 
@@ -152,6 +181,10 @@ void main() {
     expect(firstPaddock.requiredRestDays, 45);
     expect(firstPaddock.lastGrazingEndDate, isNull);
   });
+}
+
+SupabaseClient _testSupabaseClient() {
+  return SupabaseClient('https://test.supabase.co', 'test-publishable-key');
 }
 
 class _FakeAuthRemoteDataSource extends SupabaseAuthDatasource {
@@ -175,6 +208,18 @@ class _FakeAnimalRemoteDataSource extends AnimalRemoteDataSource {
 
   @override
   Future<List<Movement>> getMovements() async => [];
+}
+
+class _FakeFarmRemoteDataSource extends FarmRemoteDataSource {
+  const _FakeFarmRemoteDataSource(this._farm, super.client);
+
+  final Farm? _farm;
+
+  @override
+  Future<Farm?> readCurrentUserFarm() async => _farm;
+
+  @override
+  Future<void> upsertFarm(Farm farm) async {}
 }
 
 class _MemoryFarmRepository implements FarmRepository {
