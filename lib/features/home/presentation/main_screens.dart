@@ -1176,7 +1176,6 @@ class MoreScreen extends ConsumerWidget {
   );
 }
 
-
 class SyncScreen extends ConsumerWidget {
   const SyncScreen({super.key});
 
@@ -1309,7 +1308,7 @@ class SyncScreen extends ConsumerWidget {
             subtitle: const Text(
               'Úsalo para probar cómo responde la app cuando no hay internet.',
             ),
-            value: !sync.isOnline,
+            value: sync.manualOffline,
             onChanged: (offline) {
               ref.read(syncViewModelProvider.notifier).setOnline(!offline);
             },

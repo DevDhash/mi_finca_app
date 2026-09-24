@@ -9,7 +9,8 @@ abstract final class AnimalModel {
     'type': v.type,
     'breed': v.breed,
     'sex': v.sex,
-    'photoPath': v.photoPath,
+    'localPhotoPath': v.localPhotoPath,
+    'remotePhotoPath': v.remotePhotoPath,
     'birthDate': v.birthDate?.toIso8601String(),
     'weight': v.weight,
     'paddockId': v.paddockId,
@@ -26,7 +27,11 @@ abstract final class AnimalModel {
     type: j['type']! as String,
     breed: j['breed']! as String,
     sex: j['sex']! as String,
-    photoPath: j['photoPath'] as String?,
+    // An explicitly null new field must not resurrect the legacy value.
+    localPhotoPath:
+        (j.containsKey('localPhotoPath') ? j['localPhotoPath'] : j['photoPath'])
+            as String?,
+    remotePhotoPath: j['remotePhotoPath'] as String?,
     birthDate: j['birthDate'] == null
         ? null
         : DateTime.parse(j['birthDate']! as String),

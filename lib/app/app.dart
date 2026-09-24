@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mi_finca_app/features/sync/presentation/viewmodels/automatic_sync_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mi_finca_app/app/theme/app_theme.dart';
 import 'package:mi_finca_app/features/animals/presentation/viewmodels/animal_view_model.dart';
@@ -129,6 +130,7 @@ class _AppBootstrap extends ConsumerWidget {
       );
     }
 
+    ref.watch(automaticSyncProvider);
     return const MainShell();
   }
 }

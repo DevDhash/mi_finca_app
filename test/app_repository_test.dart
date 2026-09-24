@@ -106,36 +106,44 @@ void main() {
     expect(await syncRepository.lastSync(), isNotNull);
   });
 
-  test('sign out clears local user data and pending records', () async {
-    const session = UserSession(id: 'u1', name: 'Ana', email: 'ana@test.pe');
-    final now = DateTime(2026, 6, 19);
-    final farmLocalDataSource = FarmLocalDataSource(database);
+  test(
+    'sign out protects pending data and clears synchronized local data',
+    () async {
+      const session = UserSession(id: 'u1', name: 'Ana', email: 'ana@test.pe');
+      final now = DateTime(2026, 6, 19);
+      final farmLocalDataSource = FarmLocalDataSource(database);
 
-    await authRepository.saveSession(session);
-    await farmLocalDataSource.write(
-      const Farm(id: 'f1', name: 'Finca Norte', location: 'Junin'),
-    );
-    await animalRepository.save(
-      Animal(
-        id: 'a1',
-        code: 'V-001',
-        type: 'Vaca',
-        breed: 'Holstein',
-        sex: 'Hembra',
-        createdAt: now,
-        updatedAt: now,
-      ),
-    );
+      await authRepository.saveSession(session);
+      await farmLocalDataSource.write(
+        const Farm(id: 'f1', name: 'Finca Norte', location: 'Junin'),
+      );
+      await animalRepository.save(
+        Animal(
+          id: 'a1',
+          code: 'V-001',
+          type: 'Vaca',
+          breed: 'Holstein',
+          sex: 'Hembra',
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
 
-    expect(await syncRepository.pendingCount(), 2);
+      expect(await syncRepository.pendingCount(), 2);
+      await expectLater(
+        authRepository.signOut(),
+        throwsA(isA<PendingSessionChanges>()),
+      );
+      expect(await animalRepository.getAll(), hasLength(1));
+      await syncRepository.pushPendingChanges();
+      await authRepository.signOut();
 
-    await authRepository.signOut();
-
-    expect(await authRepository.currentSession(), isNull);
-    expect(await farmLocalDataSource.read(), isNull);
-    expect(await animalRepository.getAll(), isEmpty);
-    expect(await syncRepository.pendingCount(), 0);
-  });
+      expect(await authRepository.currentSession(), isNull);
+      expect(await farmLocalDataSource.read(), isNull);
+      expect(await animalRepository.getAll(), isEmpty);
+      expect(await syncRepository.pendingCount(), 0);
+    },
+  );
 
   test('saves local farm changes as pending outbox records', () async {
     final farmRepository = FarmRepositoryImpl(

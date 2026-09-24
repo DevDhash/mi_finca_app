@@ -10,6 +10,40 @@ final class AppDatabase extends GeneratedDatabase {
   AppDatabase([QueryExecutor? executor])
     : super(executor ?? driftDatabase(name: 'mi_finca_mvp'));
 
+  bool _closingSession = false;
+  bool get isClosingSession => _closingSession;
+
+  Future<void> beginSessionClose() async {
+    if (_closingSession) {
+      throw StateError('El cierre de sesión ya está en curso.');
+    }
+    _closingSession = true;
+    try {
+      final count = await pendingCount();
+      final animals = await readRecords('animals');
+      final hasUnpublishedPhoto = animals.any((payload) {
+        final job = payload['_photoUpload'];
+        final localPath = payload.containsKey('localPhotoPath')
+            ? payload['localPhotoPath']
+            : payload['photoPath'];
+        return (job is Map && job['status'] != 'published') ||
+            (localPath != null && payload['remotePhotoPath'] == null);
+      });
+      if (count > 0 || hasUnpublishedPhoto) throw const PendingSessionChanges();
+    } catch (_) {
+      _closingSession = false;
+      rethrow;
+    }
+  }
+
+  void endSessionClose() => _closingSession = false;
+
+  void _requireWritableSession() {
+    if (_closingSession) {
+      throw StateError('Espera a que termine el cierre de sesión.');
+    }
+  }
+
   @override
   int get schemaVersion => 1;
 
@@ -91,6 +125,7 @@ final class AppDatabase extends GeneratedDatabase {
     DateTime updatedAt, {
     bool pending = true,
   }) async {
+    _requireWritableSession();
     await customStatement(
       'INSERT OR REPLACE INTO records '
       '(collection, id, payload, updated_at, pending) VALUES (?, ?, ?, ?, ?)',
@@ -104,6 +139,49 @@ final class AppDatabase extends GeneratedDatabase {
     );
 
     _recordChanges.add(null);
+  }
+
+  Future<PendingRecord?> readRecord(String collection, String id) async {
+    final row = await customSelect(
+      'SELECT payload, updated_at FROM records WHERE collection = ? AND id = ?',
+      variables: [Variable.withString(collection), Variable.withString(id)],
+    ).getSingleOrNull();
+    if (row == null) return null;
+    return PendingRecord(
+      collection: collection,
+      id: id,
+      payload: Map<String, Object?>.from(
+        jsonDecode(row.read<String>('payload')) as Map,
+      ),
+      updatedAt: DateTime.fromMillisecondsSinceEpoch(
+        row.read<int>('updated_at'),
+      ),
+    );
+  }
+
+  /// Compare the complete snapshot, not just a millisecond timestamp. A stale
+  /// network response must never acknowledge or replace a newer local edit.
+  Future<bool> replaceRecordIfUnchanged(
+    PendingRecord expected,
+    Map<String, Object?> payload, {
+    required bool pending,
+  }) async {
+    if (_closingSession) return false;
+    final changed = await customUpdate(
+      'UPDATE records SET payload = ?, pending = ? '
+      'WHERE collection = ? AND id = ? AND payload = ? AND updated_at = ?',
+      variables: [
+        Variable.withString(jsonEncode(payload)),
+        Variable.withInt(pending ? 1 : 0),
+        Variable.withString(expected.collection),
+        Variable.withString(expected.id),
+        Variable.withString(jsonEncode(expected.payload)),
+        Variable.withInt(expected.updatedAt.millisecondsSinceEpoch),
+      ],
+      updates: {},
+    );
+    if (changed > 0) _recordChanges.add(null);
+    return changed > 0;
   }
 
   Future<void> removeRecord(String collection, String id) async {
@@ -150,10 +228,13 @@ final class AppDatabase extends GeneratedDatabase {
     return row?.read<String>('value');
   }
 
-  Future<void> writeSetting(String key, String value) => customStatement(
-    'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
-    [key, value],
-  );
+  Future<void> writeSetting(String key, String value) async {
+    _requireWritableSession();
+    await customStatement(
+      'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+      [key, value],
+    );
+  }
 
   Future<void> deleteSetting(String key) =>
       customStatement('DELETE FROM settings WHERE key = ?', [key]);
@@ -186,4 +267,11 @@ class PendingRecord {
   final String id;
   final Map<String, Object?> payload;
   final DateTime updatedAt;
+}
+
+class PendingSessionChanges implements Exception {
+  const PendingSessionChanges();
+  @override
+  String toString() =>
+      'Sincroniza los cambios y las fotos pendientes antes de cerrar sesión.';
 }

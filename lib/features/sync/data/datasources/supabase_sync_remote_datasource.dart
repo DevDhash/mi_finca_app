@@ -1,3 +1,5 @@
+import 'package:mi_finca_app/features/animals/data/models/animal_photo_upload.dart';
+import 'package:mi_finca_app/features/animals/data/models/animal_remote_payload.dart';
 import 'package:mi_finca_app/core/database/app_database.dart';
 import 'package:mi_finca_app/features/sync/data/datasources/sync_remote_datasource.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -71,24 +73,14 @@ class SupabaseSyncRemoteDataSource implements SyncRemoteDataSource {
 
   Future<void> _pushAnimal(Map<String, Object?> payload) async {
     final userId = await _currentUserId();
+    final job = AnimalPhotoUpload.read(payload);
+    if (job != null && job['ownerId'] != userId) {
+      throw const AuthException('La foto pertenece a otra sesión.');
+    }
 
-    await _client.from('animals').upsert({
-      'id': payload['id'],
-      'user_id': userId,
-      'code': payload['code'],
-      'name': payload['name'],
-      'type': payload['type'],
-      'breed': payload['breed'],
-      'sex': payload['sex'],
-      'photo_path': payload['photoPath'],
-      'birth_date': payload['birthDate'],
-      'weight': payload['weight'],
-      'paddock_id': payload['paddockId'],
-      'notes': payload['notes'],
-      'status': payload['status'],
-      'created_at': payload['createdAt'],
-      'updated_at': payload['updatedAt'],
-    });
+    await _client
+        .from('animals')
+        .upsert(AnimalRemotePayload.fromLocal(payload, userId));
   }
 
   Future<void> _pushMovement(Map<String, Object?> payload) async {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mi_finca_app/core/database/app_database.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mi_finca_app/app/theme/app_theme.dart';
 import 'package:mi_finca_app/features/auth/presentation/viewmodels/auth_view_model.dart';
@@ -14,16 +15,21 @@ class ProfileScreen extends ConsumerWidget {
           .read(syncRepositoryProvider)
           .pendingCount();
       if (!context.mounted) return;
-
+      if (pendingChanges > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Sincroniza los cambios y las fotos pendientes antes de cerrar sesión.',
+            ),
+          ),
+        );
+        return;
+      }
       final shouldSignOut = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: const Text('Cerrar sesión'),
-          content: Text(
-            pendingChanges > 0
-                ? 'Tienes $pendingChanges cambios sin sincronizar. Si cierras sesión ahora, podrían perderse de este dispositivo. ¿Deseas cerrar sesión de todas formas?'
-                : '¿Estás seguro de que deseas cerrar tu sesión?',
-          ),
+          content: const Text('¿Estás seguro de que deseas cerrar tu sesión?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -50,6 +56,15 @@ class ProfileScreen extends ConsumerWidget {
         context,
         rootNavigator: true,
       ).popUntil((route) => route.isFirst);
+    } on PendingSessionChanges {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Sincroniza los cambios y las fotos pendientes antes de cerrar sesión.',
+          ),
+        ),
+      );
     } catch (_) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

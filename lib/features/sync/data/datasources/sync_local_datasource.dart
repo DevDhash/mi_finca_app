@@ -20,6 +20,9 @@ class SyncLocalDataSource {
     return _database.markRecordSynced(collection, id);
   }
 
+  Future<bool> acknowledge(PendingRecord record) => _database
+      .replaceRecordIfUnchanged(record, record.payload, pending: false);
+
   Future<DateTime?> lastSync() async {
     final raw = await _database.readSetting('last_sync');
     return raw == null ? null : DateTime.parse(raw);

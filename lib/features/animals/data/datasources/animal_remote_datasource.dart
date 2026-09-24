@@ -1,3 +1,5 @@
+import 'package:mi_finca_app/features/animals/data/models/animal_model.dart';
+import 'package:mi_finca_app/features/animals/data/models/animal_remote_payload.dart';
 import 'package:mi_finca_app/core/domain/sync_status.dart';
 import 'package:mi_finca_app/features/animals/domain/entities/animal.dart';
 import 'package:mi_finca_app/features/animals/domain/entities/movement.dart';
@@ -8,6 +10,8 @@ class AnimalRemoteDataSource {
 
   final SupabaseClient _client;
 
+  String? get currentUserId => _client.auth.currentUser?.id;
+
   Future<void> upsertAnimal(Animal animal) async {
     final user = _client.auth.currentUser;
 
@@ -15,23 +19,11 @@ class AnimalRemoteDataSource {
       throw const AuthException('No hay usuario autenticado.');
     }
 
-    await _client.from('animals').upsert({
-      'id': animal.id,
-      'user_id': user.id,
-      'code': animal.code,
-      'name': animal.name,
-      'type': animal.type,
-      'breed': animal.breed,
-      'sex': animal.sex,
-      'photo_path': animal.photoPath,
-      'birth_date': animal.birthDate?.toIso8601String(),
-      'weight': animal.weight,
-      'paddock_id': animal.paddockId,
-      'notes': animal.notes,
-      'status': animal.status,
-      'created_at': animal.createdAt.toIso8601String(),
-      'updated_at': animal.updatedAt.toIso8601String(),
-    });
+    await _client
+        .from('animals')
+        .upsert(
+          AnimalRemotePayload.fromLocal(AnimalModel.toJson(animal), user.id),
+        );
   }
 
   Future<void> upsertMovement(Movement movement) async {
@@ -63,7 +55,7 @@ class AnimalRemoteDataSource {
     final response = await _client
         .from('animals')
         .select(
-          'id, code, name, type, breed, sex, photo_path, birth_date, weight, paddock_id, notes, status, created_at, updated_at',
+          'id, code, name, type, breed, sex, remote_photo_path, birth_date, weight, paddock_id, notes, status, created_at, updated_at',
         )
         .eq('user_id', user.id)
         .isFilter('deleted_at', null)
@@ -78,7 +70,7 @@ class AnimalRemoteDataSource {
             type: json['type'] as String,
             breed: json['breed'] as String? ?? '',
             sex: json['sex'] as String? ?? '',
-            photoPath: json['photo_path'] as String?,
+            remotePhotoPath: json['remote_photo_path'] as String?,
             birthDate: json['birth_date'] == null
                 ? null
                 : DateTime.parse(json['birth_date'] as String),

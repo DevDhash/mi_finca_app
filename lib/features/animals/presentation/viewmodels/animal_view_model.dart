@@ -187,6 +187,13 @@ class AnimalViewModel extends AsyncNotifier<AnimalState> {
     return results.length;
   }
 
+  Future<void> refreshFromRemote() async {
+    final items = await ref.read(animalRepositoryProvider).refreshAnimals();
+    if (!ref.mounted) return;
+    // Keep movement state and the current list visible throughout the request.
+    state = AsyncData(state.requireValue.copyWith(animals: items));
+  }
+
   Future<void> reload() async {
     final repository = ref.read(animalRepositoryProvider);
 

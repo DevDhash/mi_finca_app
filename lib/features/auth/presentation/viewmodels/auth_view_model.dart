@@ -1,3 +1,8 @@
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:mi_finca_app/features/animals/presentation/viewmodels/animal_photo_cache_provider.dart';
+import 'package:mi_finca_app/features/animals/presentation/viewmodels/animal_photo_provider.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mi_finca_app/core/database/database_provider.dart';
 import 'package:mi_finca_app/features/auth/data/datasources/auth_local_datasource.dart';
@@ -24,6 +29,15 @@ final authRepositoryProvider = Provider<AuthRepository>(
   (ref) => AuthRepositoryImpl(
     local: ref.watch(authLocalDataSourceProvider),
     remote: ref.watch(supabaseAuthDataSourceProvider),
+    clearLocalPhotos: (owner) async {
+      await ref.read(animalPhotoCacheServiceProvider)?.clearOwner(owner);
+      final originals = Directory(
+        '${(await getApplicationDocumentsDirectory()).path}/animal_photos',
+      );
+      if (await originals.exists()) await originals.delete(recursive: true);
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
+    },
   ),
 );
 
@@ -104,5 +118,7 @@ class AuthViewModel extends AsyncNotifier<UserSession?> {
     ref.invalidate(paddockViewModelProvider);
     ref.invalidate(expenseViewModelProvider);
     ref.invalidate(syncViewModelProvider);
+    ref.invalidate(animalPhotoCacheProvider);
+    ref.invalidate(animalPhotoUrlProvider);
   }
 }

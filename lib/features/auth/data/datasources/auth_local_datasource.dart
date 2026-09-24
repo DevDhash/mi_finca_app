@@ -24,5 +24,8 @@ class AuthLocalDataSource {
 
   Future<void> deleteSession() => _database.deleteSetting('session');
 
+  Future<void> beginSessionClose() => _database.beginSessionClose();
+  void endSessionClose() => _database.endSessionClose();
+
   Future<void> clearSessionData() => _database.clearAll();
 }

@@ -8,11 +8,14 @@ class AuthRepositoryImpl implements AuthRepository {
   const AuthRepositoryImpl({
     required AuthLocalDataSource local,
     required SupabaseAuthDatasource remote,
+    Future<void> Function(String owner)? clearLocalPhotos,
   }) : _local = local,
-       _remote = remote;
+       _remote = remote,
+       _clearLocalPhotos = clearLocalPhotos;
 
   final AuthLocalDataSource _local;
   final SupabaseAuthDatasource _remote;
+  final Future<void> Function(String owner)? _clearLocalPhotos;
 
   @override
   Future<UserSession?> currentSession() async {
@@ -89,8 +92,22 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> signOut() async {
-    await _remote.signOut();
-    await _local.clearSessionData();
+    await _local.beginSessionClose();
+    try {
+      final owner = (await _local.readSession())?.id;
+      await _remote.signOut();
+      await _local.clearSessionData();
+      if (owner != null) {
+        try {
+          await _clearLocalPhotos?.call(owner);
+        } catch (_) {
+          // Logout already succeeded; inaccessible account-scoped cache must
+          // not restore a cleared session if filesystem cleanup fails.
+        }
+      }
+    } finally {
+      _local.endSessionClose();
+    }
   }
 
   UserSession _mapSupabaseUserToSession(User user) {

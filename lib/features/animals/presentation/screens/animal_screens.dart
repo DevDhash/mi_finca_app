@@ -1,6 +1,8 @@
+import 'package:mi_finca_app/features/animals/presentation/viewmodels/animal_photo_provider.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:mi_finca_app/features/animals/presentation/widgets/animal_photo_avatar.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mi_finca_app/app/theme/app_theme.dart';
@@ -24,6 +26,32 @@ class AnimalListScreen extends ConsumerStatefulWidget {
 class _AnimalListScreenState extends ConsumerState<AnimalListScreen> {
   String query = '';
   String type = 'Todos';
+  bool refreshing = false;
+
+  Future<void> refreshAnimals() async {
+    if (refreshing) return;
+    setState(() => refreshing = true);
+    try {
+      await ref.read(animalViewModelProvider.notifier).refreshFromRemote();
+      if (!mounted) return;
+      ref.invalidate(animalPhotoUrlProvider);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Animales actualizados.')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No se pudieron actualizar los animales. Tus datos locales se conservan.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => refreshing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final animals = ref.watch(animalViewModelProvider).requireValue.animals;
@@ -45,6 +73,17 @@ class _AnimalListScreenState extends ConsumerState<AnimalListScreen> {
           style: TextStyle(fontWeight: FontWeight.w800),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Actualizar animales',
+            onPressed: refreshing ? null : refreshAnimals,
+            icon: refreshing
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: OutlinedButton.icon(
@@ -113,7 +152,7 @@ class _AnimalListScreenState extends ConsumerState<AnimalListScreen> {
           const SizedBox(height: 8),
           Expanded(
             child: items.isEmpty
-                ?EmptyState(
+                ? EmptyState(
                     imagePath: AppImages.iconoAgregarAnimal,
                     message: query.isEmpty
                         ? 'Aún no tienes animales registrados. Toca el botón para agregar el primero.'
@@ -163,15 +202,12 @@ class AnimalListCard extends StatelessWidget {
     child: ListTile(
       onTap: onTap,
       contentPadding: const EdgeInsets.all(12),
-      leading: CircleAvatar(
+      leading: AnimalPhotoAvatar(
         radius: 28,
-        backgroundColor: AppColors.primaryLight,
-        backgroundImage: animal.photoPath == null
-            ? null
-            : FileImage(File(animal.photoPath!)),
-        child: animal.photoPath == null
-            ? const Icon(Icons.pets, color: AppColors.primaryDark)
-            : null,
+        animalId: animal.id,
+        remotePhotoPath: animal.remotePhotoPath,
+        localPhotoPath: animal.localPhotoPath,
+        placeholder: const Icon(Icons.pets, color: AppColors.primaryDark),
       ),
       title: Text(
         animal.displayName,
@@ -210,7 +246,7 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
   String type = 'Vaca';
   String sex = 'Hembra';
   String? paddockId;
-  String? photoPath;
+  String? localPhotoPath;
   DateTime? birthDate;
   @override
   void initState() {
@@ -225,7 +261,7 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
       type = a.type;
       sex = a.sex;
       paddockId = a.paddockId;
-      photoPath = a.photoPath;
+      localPhotoPath = a.localPhotoPath;
       birthDate = a.birthDate;
     }
   }
@@ -255,7 +291,7 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
       '${const Uuid().v4()}${path.extension(image.path)}',
     );
     await File(image.path).copy(target);
-    if (mounted) setState(() => photoPath = target);
+    if (mounted) setState(() => localPhotoPath = target);
   }
 
   Future<void> save() async {
@@ -272,7 +308,8 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
       type: type,
       breed: breed.text.trim(),
       sex: sex,
-      photoPath: photoPath,
+      localPhotoPath: localPhotoPath,
+      remotePhotoPath: old?.remotePhotoPath,
       birthDate: birthDate,
       weight: double.tryParse(weight.text.replaceAll(',', '.')),
       paddockId: paddockId,
@@ -371,15 +408,12 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
                       ),
                     ),
                   ),
-                  child: CircleAvatar(
+                  child: AnimalPhotoAvatar(
                     radius: 62,
-                    backgroundColor: AppColors.primaryLight,
-                    backgroundImage: photoPath == null
-                        ? null
-                        : FileImage(File(photoPath!)),
-                    child: photoPath == null
-                        ? const Icon(Icons.add_a_photo, size: 38)
-                        : null,
+                    animalId: widget.animal?.id ?? 'draft',
+                    remotePhotoPath: widget.animal?.remotePhotoPath,
+                    localPhotoPath: localPhotoPath,
+                    placeholder: const Icon(Icons.add_a_photo, size: 38),
                   ),
                 ),
               ),
@@ -558,15 +592,12 @@ class AnimalDetailScreen extends ConsumerWidget {
         padding: const EdgeInsets.all(20),
         children: [
           Center(
-            child: CircleAvatar(
+            child: AnimalPhotoAvatar(
               radius: 72,
-              backgroundColor: AppColors.primaryLight,
-              backgroundImage: animal.photoPath == null
-                  ? null
-                  : FileImage(File(animal.photoPath!)),
-              child: animal.photoPath == null
-                  ? const Icon(Icons.pets, size: 54)
-                  : null,
+              animalId: animal.id,
+              remotePhotoPath: animal.remotePhotoPath,
+              localPhotoPath: animal.localPhotoPath,
+              placeholder: const Icon(Icons.pets, size: 54),
             ),
           ),
           const SizedBox(height: 20),
@@ -1103,18 +1134,15 @@ class _MoveAnimalBatchScreenState extends ConsumerState<MoveAnimalBatchScreen> {
 
                                 const SizedBox(width: 6),
 
-                                CircleAvatar(
+                                AnimalPhotoAvatar(
                                   radius: 25,
-                                  backgroundColor: AppColors.primaryLight,
-                                  backgroundImage: animal.photoPath == null
-                                      ? null
-                                      : FileImage(File(animal.photoPath!)),
-                                  child: animal.photoPath == null
-                                      ? const Icon(
-                                          Icons.pets,
-                                          color: AppColors.primaryDark,
-                                        )
-                                      : null,
+                                  animalId: animal.id,
+                                  remotePhotoPath: animal.remotePhotoPath,
+                                  localPhotoPath: animal.localPhotoPath,
+                                  placeholder: const Icon(
+                                    Icons.pets,
+                                    color: AppColors.primaryDark,
+                                  ),
                                 ),
 
                                 const SizedBox(width: 12),

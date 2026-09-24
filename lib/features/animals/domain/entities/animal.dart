@@ -1,5 +1,7 @@
 import 'package:mi_finca_app/core/domain/sync_status.dart';
 
+const _notProvided = Object();
+
 class Animal {
   const Animal({
     required this.id,
@@ -8,7 +10,8 @@ class Animal {
     required this.type,
     required this.breed,
     required this.sex,
-    this.photoPath,
+    this.localPhotoPath,
+    this.remotePhotoPath,
     this.birthDate,
     this.weight,
     this.paddockId,
@@ -24,7 +27,12 @@ class Animal {
   final String type;
   final String breed;
   final String sex;
-  final String? photoPath;
+
+  /// Private device file; never serialized to Supabase.
+  final String? localPhotoPath;
+
+  /// Object key inside the private animal-photos bucket, never a URL.
+  final String? remotePhotoPath;
   final DateTime? birthDate;
   final double? weight;
   final String? paddockId;
@@ -40,7 +48,8 @@ class Animal {
     String? type,
     String? breed,
     String? sex,
-    String? photoPath,
+    Object? localPhotoPath = _notProvided,
+    Object? remotePhotoPath = _notProvided,
     DateTime? birthDate,
     double? weight,
     String? paddockId,
@@ -55,7 +64,12 @@ class Animal {
     type: type ?? this.type,
     breed: breed ?? this.breed,
     sex: sex ?? this.sex,
-    photoPath: photoPath ?? this.photoPath,
+    localPhotoPath: localPhotoPath == _notProvided
+        ? this.localPhotoPath
+        : localPhotoPath as String?,
+    remotePhotoPath: remotePhotoPath == _notProvided
+        ? this.remotePhotoPath
+        : remotePhotoPath as String?,
     birthDate: birthDate ?? this.birthDate,
     weight: weight ?? this.weight,
     paddockId: paddockId ?? this.paddockId,

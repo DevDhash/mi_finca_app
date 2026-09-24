@@ -1,4 +1,3 @@
-import 'package:mi_finca_app/core/domain/sync_status.dart';
 import 'package:mi_finca_app/features/animals/data/datasources/animal_local_datasource.dart';
 import 'package:mi_finca_app/features/animals/data/datasources/animal_remote_datasource.dart';
 import 'package:mi_finca_app/features/animals/domain/entities/animal.dart';
@@ -22,19 +21,25 @@ class AnimalRepositoryImpl implements AnimalRepository {
     if (localItems.isNotEmpty) return localItems;
 
     try {
-      final remoteItems = await _remote.getAnimals();
-
-      for (final animal in remoteItems) {
-        await _local.save(
-          animal.copyWith(syncStatus: SyncStatus.synced),
-          pending: false,
-        );
-      }
-
-      return remoteItems;
+      return await refreshAnimals();
     } catch (_) {
-      return localItems;
+      return _local.getAll();
     }
+  }
+
+  @override
+  Future<List<Animal>> refreshAnimals() async {
+    final owner = _remote.currentUserId;
+    if (owner == null) {
+      throw StateError('Inicia sesión para actualizar animales.');
+    }
+    final snapshot = await _local.snapshotForRefresh(owner);
+    final remoteItems = await _remote.getAnimals();
+    if (_remote.currentUserId != owner) {
+      throw StateError('La sesión cambió durante la actualización.');
+    }
+    await _local.mergeRemoteAnimals(remoteItems, snapshot);
+    return _local.getAll();
   }
 
   @override
