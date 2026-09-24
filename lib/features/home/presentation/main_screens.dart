@@ -46,49 +46,54 @@ class _MainShellState extends ConsumerState<MainShell> {
               Expanded(
                 child: IndexedStack(index: index, children: pages),
               ),
-              NavigationBar(
-                selectedIndex: index,
-                onDestinationSelected: (v) {
-                  _closeFab();
-                  setState(() => index = v);
-                },
-                destinations: const [
-                  NavigationDestination(
-                    icon: Icon(
-                      Icons.home_outlined,
+              MediaQuery.removePadding(
+                context: context,
+                removeTop: true,
+                child: NavigationBar(
+                  height: 60,
+                  selectedIndex: index,
+                  onDestinationSelected: (v) {
+                    _closeFab();
+                    setState(() => index = v);
+                  },
+                  destinations: const [
+                    NavigationDestination(
+                      icon: Icon(
+                        Icons.home_outlined,
 
-                      color: AppColors.primaryDark,
-                    ),
+                        color: AppColors.primaryDark,
+                      ),
 
-                    selectedIcon: Icon(
-                      Icons.home,
+                      selectedIcon: Icon(
+                        Icons.home,
 
-                      color: AppColors.primaryDark,
-                    ),
+                        color: AppColors.primaryDark,
+                      ),
 
-                    label: 'Inicio',
-                  ),
-                  NavigationDestination(
-                    icon: _NavAssetIcon(path: AppImages.iconToro),
-                    selectedIcon: _NavAssetIcon(
-                      path: AppImages.iconToro,
-                      selected: true,
+                      label: 'Inicio',
                     ),
-                    label: 'Animales',
-                  ),
-                  NavigationDestination(
-                    icon: _NavAssetIcon(path: AppImages.iconPasto),
-                    selectedIcon: _NavAssetIcon(
-                      path: AppImages.iconPasto,
-                      selected: true,
+                    NavigationDestination(
+                      icon: _NavAssetIcon(path: AppImages.iconToro),
+                      selectedIcon: _NavAssetIcon(
+                        path: AppImages.iconToro,
+                        selected: true,
+                      ),
+                      label: 'Animales',
                     ),
-                    label: 'Potreros',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.more_horiz),
-                    label: 'Más',
-                  ),
-                ],
+                    NavigationDestination(
+                      icon: _NavAssetIcon(path: AppImages.iconPasto),
+                      selectedIcon: _NavAssetIcon(
+                        path: AppImages.iconPasto,
+                        selected: true,
+                      ),
+                      label: 'Potreros',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.more_horiz),
+                      label: 'Más',
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
