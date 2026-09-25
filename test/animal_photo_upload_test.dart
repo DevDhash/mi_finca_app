@@ -305,6 +305,8 @@ void main() {
         legacy,
         DateTime(2026),
         pending: false,
+        // This fixture represents a positively read, owned remote FOTO A row.
+        verifiedRemoteOwner: 'user',
       );
       expect(await sync.pendingCount(), 1);
       await sync.pushPendingChanges();

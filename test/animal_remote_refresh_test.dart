@@ -136,7 +136,15 @@ void main() {
     final before = (await database.readRecords('animals')).single;
     remote.items = [makeAnimal(remotePath: secondPhoto)];
     await repository.refreshAnimals();
-    expect((await database.readRecords('animals')).single, before);
+    final expected = {
+      ...before,
+      '_sync': {
+        ...Map<String, Object?>.from(before['_sync']! as Map),
+        'remotePresence': 'confirmed',
+      },
+    };
+    // Positive existence evidence changes; domain/photo/operation bytes do not.
+    expect((await database.readRecords('animals')).single, expected);
     expect(await database.pendingCount(), 1);
   });
 

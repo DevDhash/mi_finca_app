@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:mi_finca_app/core/database/sync_metadata.dart';
 
 import 'package:mi_finca_app/core/domain/sync_status.dart';
 import 'package:mi_finca_app/features/animals/data/models/animal_photo_upload.dart';
@@ -97,14 +98,24 @@ class AnimalLocalDataSource {
         if (record.collection == 'animals') record.id,
     };
     for (final animal in animals) {
+      final current = await _database.readRecord('animals', animal.id);
+      // Existence is positive evidence even when a pending edit blocks content.
+      await _database.markRemoteConfirmed(
+        'animals',
+        animal.id,
+        snapshot.ownerId,
+      );
       if (snapshot.pendingIds.contains(animal.id) ||
           pending.contains(animal.id)) {
         continue;
       }
-      final current = await _database.readRecord('animals', animal.id);
       final previous = snapshot.payloads[animal.id];
       // Never overwrite a local edit (even already pushed) made during the GET.
-      if (jsonEncode(current?.payload) != jsonEncode(previous)) continue;
+      if (current != null && previous != null) {
+        if (!SyncMetadata.sameOperation(current.payload, previous)) continue;
+      } else if (current != null || previous != null) {
+        continue;
+      }
       final job = current == null
           ? null
           : AnimalPhotoUpload.read(current.payload);

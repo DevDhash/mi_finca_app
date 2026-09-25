@@ -6,6 +6,14 @@ class SyncLocalDataSource {
 
   final AppDatabase _database;
 
+  Future<PendingRecord?> beginRemotePublish(PendingRecord record) =>
+      _database.beginRemotePublish(record);
+  Future<void> markRemoteConfirmed(
+    String collection,
+    String id,
+    String owner,
+  ) => _database.markRemoteConfirmed(collection, id, owner);
+
   Future<PendingRecord?> find(String collection, String id) =>
       _database.readRecord(collection, id, includeDeleted: true);
   Future<String?> localOwner() => _database.localOwner();

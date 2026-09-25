@@ -1,5 +1,7 @@
 import 'package:uuid/uuid.dart';
 
+enum RemotePresence { localOnly, unknown, confirmed }
+
 /// Internal protocol. Never serialized to a domain table by its upsert writer.
 abstract final class SyncMetadata {
   static const key = '_sync';
@@ -20,6 +22,49 @@ abstract final class SyncMetadata {
       read(payload)['tombstone'] == true;
   static String? owner(Map<String, Object?> payload) =>
       read(payload)['ownerId'] as String?;
+
+  static RemotePresence presence(Map<String, Object?> payload) =>
+      switch (read(payload)['remotePresence']) {
+        'local_only' => RemotePresence.localOnly,
+        'confirmed' => RemotePresence.confirmed,
+        _ => RemotePresence.unknown,
+      };
+
+  static String presenceValue(RemotePresence value) => switch (value) {
+    RemotePresence.localOnly => 'local_only',
+    RemotePresence.unknown => 'unknown',
+    RemotePresence.confirmed => 'confirmed',
+  };
+
+  // Existence evidence is independent from the business operation being ACKed.
+  // No other metadata (owner, revision, operationId, tombstone) is ignored.
+  static bool sameOperation(Map<String, Object?> a, Map<String, Object?> b) {
+    Map<String, Object?> withoutPresence(Map<String, Object?> value) {
+      final meta = read(value)..remove('remotePresence');
+      return {...value, if (meta.isNotEmpty) key: meta}
+        ..removeWhere((k, v) => k == key && meta.isEmpty);
+    }
+
+    bool equalJson(Object? left, Object? right) {
+      if (left is Map && right is Map) {
+        return left.length == right.length &&
+            left.keys.every(
+              (key) =>
+                  right.containsKey(key) && equalJson(left[key], right[key]),
+            );
+      }
+      if (left is List && right is List) {
+        if (left.length != right.length) return false;
+        for (var i = 0; i < left.length; i++) {
+          if (!equalJson(left[i], right[i])) return false;
+        }
+        return true;
+      }
+      return left == right;
+    }
+
+    return equalJson(withoutPresence(a), withoutPresence(b));
+  }
 
   static Map<String, Object?> operation({
     required String? ownerId,

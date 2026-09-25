@@ -133,6 +133,13 @@ final class AppDatabase extends GeneratedDatabase {
   }) async {
     return transaction(() async {
       _requireWritableSession();
+      if (verifiedRemoteOwner != null) {
+        await _markRemoteConfirmedInTransaction(
+          collection,
+          id,
+          verifiedRemoteOwner,
+        );
+      }
       final previous = await readRecord(collection, id, includeDeleted: true);
       if (previous?.isDeleted == true) {
         if (pending) throw StateError('El registro está eliminado.');
@@ -185,6 +192,19 @@ final class AppDatabase extends GeneratedDatabase {
         next[SyncMetadata.key] = oldMeta;
       } else {
         next.remove(SyncMetadata.key);
+      }
+      if (SyncMetadata.collections.contains(collection)) {
+        final presence = verifiedRemoteOwner != null
+            ? RemotePresence.confirmed
+            : previous != null
+            ? previous.remotePresence
+            : pending && owner != null
+            ? RemotePresence.localOnly
+            : RemotePresence.unknown;
+        next[SyncMetadata.key] = {
+          ...SyncMetadata.read(next),
+          'remotePresence': SyncMetadata.presenceValue(presence),
+        };
       }
       await _writeRecord(collection, id, next, updatedAt, pending: pending);
     });
@@ -272,7 +292,13 @@ final class AppDatabase extends GeneratedDatabase {
     await _writeRecord(
       collection,
       id,
-      {...record.payload, SyncMetadata.key: meta},
+      {
+        ...record.payload,
+        SyncMetadata.key: {
+          ...meta,
+          'remotePresence': SyncMetadata.presenceValue(record.remotePresence),
+        },
+      },
       now,
       pending: true,
     );
@@ -388,33 +414,139 @@ final class AppDatabase extends GeneratedDatabase {
     }, pending: false);
   });
 
-  /// Compare the complete snapshot, not just a millisecond timestamp. A stale
-  /// network response must never acknowledge or replace a newer local edit.
+  /// Compare the complete operation snapshot except independent presence evidence.
+  /// A stale response cannot ACK another revision; current evidence is preserved.
   Future<bool> replaceRecordIfUnchanged(
     PendingRecord expected,
     Map<String, Object?> payload, {
     required bool pending,
-  }) async {
+  }) => transaction(() async {
     if (_closingSession) return false;
     if (expected.ownerId != null && await localOwner() != expected.ownerId) {
       return false;
     }
-    if (expected.isDeleted && !SyncMetadata.isDeleted(payload)) return false;
-    final changed = await customUpdate(
-      'UPDATE records SET payload = ?, pending = ? '
-      'WHERE collection = ? AND id = ? AND payload = ? AND updated_at = ?',
-      variables: [
-        Variable.withString(jsonEncode(payload)),
-        Variable.withInt(pending ? 1 : 0),
-        Variable.withString(expected.collection),
-        Variable.withString(expected.id),
-        Variable.withString(jsonEncode(expected.payload)),
-        Variable.withInt(expected.updatedAt.millisecondsSinceEpoch),
-      ],
-      updates: {},
+    final current = await readRecord(
+      expected.collection,
+      expected.id,
+      includeDeleted: true,
     );
-    if (changed > 0) _recordChanges.add(null);
-    return changed > 0;
+    if (current == null ||
+        current.updatedAt.millisecondsSinceEpoch !=
+            expected.updatedAt.millisecondsSinceEpoch ||
+        !SyncMetadata.sameOperation(current.payload, expected.payload)) {
+      return false;
+    }
+    if (current.isDeleted && !SyncMetadata.isDeleted(payload)) return false;
+    final next = {...payload};
+    final presence = current.remotePresence;
+    next[SyncMetadata.key] = {
+      ...SyncMetadata.read(next),
+      'remotePresence': SyncMetadata.presenceValue(presence),
+    };
+    await _writeRecord(
+      expected.collection,
+      expected.id,
+      next,
+      current.updatedAt,
+      pending: pending,
+    );
+    return true;
+  });
+
+  /// Atomic publication claim. A future local cancellation must compete with
+  /// this transaction: once claimed, this identity is never "never sent" again.
+  Future<PendingRecord?> beginRemotePublish(PendingRecord expected) =>
+      transaction(() async {
+        _requireWritableSession();
+        if (expected.ownerId != null) await requireOwner(expected.ownerId!);
+        final current = await readRecord(
+          expected.collection,
+          expected.id,
+          includeDeleted: true,
+        );
+        if (current == null ||
+            current.isDeleted ||
+            current.updatedAt.millisecondsSinceEpoch !=
+                expected.updatedAt.millisecondsSinceEpoch ||
+            !SyncMetadata.sameOperation(current.payload, expected.payload)) {
+          return null;
+        }
+        if (!(await readPendingRecords()).any(
+          (r) => r.collection == current.collection && r.id == current.id,
+        )) {
+          return null;
+        }
+        if (current.remotePresence != RemotePresence.localOnly) return current;
+        final payload = {
+          ...current.payload,
+          SyncMetadata.key: {
+            ...SyncMetadata.read(current.payload),
+            'remotePresence': 'unknown',
+          },
+        };
+        await _writeRecord(
+          current.collection,
+          current.id,
+          payload,
+          current.updatedAt,
+          pending: true,
+        );
+        return PendingRecord(
+          collection: current.collection,
+          id: current.id,
+          payload: payload,
+          updatedAt: current.updatedAt,
+        );
+      });
+
+  /// Only callers holding a positive authenticated row read / UPSERT result
+  /// may call this. Never called for Storage or a deletion-ledger response.
+  /// Evidence can outlive a revision, but cannot ACK it or restore its payload.
+  Future<void> markRemoteConfirmed(
+    String collection,
+    String id,
+    String owner,
+  ) => transaction(
+    () => _markRemoteConfirmedInTransaction(collection, id, owner),
+  );
+
+  /// Caller must already hold the transaction. Public callers use the wrapper;
+  /// putRecord shares its own atomic unit instead of opening another savepoint.
+  Future<void> _markRemoteConfirmedInTransaction(
+    String collection,
+    String id,
+    String owner,
+  ) async {
+    await requireOwner(owner);
+    if (!SyncMetadata.collections.contains(collection)) {
+      throw ArgumentError.value(collection);
+    }
+    final current = await readRecord(collection, id, includeDeleted: true);
+    if (current == null) return;
+    final photoOwner = (current.payload['_photoUpload'] as Map?)?['ownerId'];
+    if ((current.ownerId != null && current.ownerId != owner) ||
+        (photoOwner != null && photoOwner != owner)) {
+      throw StateError('La evidencia pertenece a otra cuenta.');
+    }
+    if (current.remotePresence == RemotePresence.confirmed) return;
+    final pending = (await readPendingRecords()).any(
+      (r) => r.collection == collection && r.id == id,
+    );
+    await _writeRecord(
+      collection,
+      id,
+      {
+        ...current.payload,
+        SyncMetadata.key: {
+          ...SyncMetadata.read(current.payload),
+          'ownerId': owner,
+          if (current.ownerId == null) 'ownership': 'verified_remote',
+          'remotePresence': 'confirmed',
+        },
+      },
+      current.updatedAt,
+      pending: pending,
+    );
   }
 
   Future<void> removeRecord(String collection, String id) => transaction(
@@ -521,6 +653,7 @@ class PendingRecord {
   final String id;
   final Map<String, Object?> payload;
   final DateTime updatedAt;
+  RemotePresence get remotePresence => SyncMetadata.presence(payload);
   bool get isDeleted => SyncMetadata.isDeleted(payload);
   String? get ownerId => SyncMetadata.owner(payload);
   String get operation =>

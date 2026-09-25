@@ -58,10 +58,32 @@ class AnimalPhotoSync {
     Future<void> Function(PendingRecord) publish,
   ) async {
     if (initial.isDeleted) return false;
-    var record = initial;
+    final claimed = await _database.beginRemotePublish(initial);
+    if (claimed == null) return false;
+    final latest = await _database.readRecord(
+      initial.collection,
+      initial.id,
+      includeDeleted: true,
+    );
+    if (latest == null ||
+        latest.isDeleted ||
+        !SyncMetadata.sameOperation(latest.payload, claimed.payload) ||
+        latest.updatedAt != claimed.updatedAt) {
+      return false;
+    }
+    var record = latest;
+    Future<void> confirmPresence() async {
+      final owner = record.ownerId;
+      if (owner == null || _storage.currentUserId != owner) {
+        throw const PhotoUploadFailure('auth_required');
+      }
+      await _database.markRemoteConfirmed(record.collection, record.id, owner);
+    }
+
     var job = AnimalPhotoUpload.read(record.payload);
     if (job == null) {
       await publish(record);
+      await confirmPresence();
       return _database.replaceRecordIfUnchanged(record, {
         ...record.payload,
         'syncStatus': 'synced',
@@ -167,6 +189,7 @@ class AnimalPhotoSync {
       await requireOwner();
       await publish(record);
       await requireOwner();
+      await confirmPresence();
       return _database.replaceRecordIfUnchanged(record, {
         ...record.payload,
         'syncStatus': 'synced',
