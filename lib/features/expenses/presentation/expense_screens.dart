@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/features/expenses/domain/repositories/expense_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -18,6 +19,114 @@ class ExpenseListScreen extends ConsumerStatefulWidget {
 }
 
 class _ExpenseListScreenState extends ConsumerState<ExpenseListScreen> {
+  bool _deleteDialogOpen = false;
+  bool _refreshing = false;
+
+  Future<void> _refreshExpenses() async {
+    if (_refreshing) return;
+    setState(() => _refreshing = true);
+    try {
+      await ref.read(expenseViewModelProvider.notifier).refresh();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No se pudo actualizar. Tus gastos guardados siguen disponibles.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
+
+  Future<void> _confirmDelete(Expense expense) async {
+    if (_deleteDialogOpen) return;
+    _deleteDialogOpen = true;
+    var deleting = false;
+    String? errorMessage;
+    try {
+      final deleted = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, update) => PopScope(
+            canPop: !deleting,
+            child: AlertDialog(
+              title: const Text('Eliminar gasto'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    '¿Estás seguro de que deseas eliminar este gasto?',
+                  ),
+                  if (errorMessage != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Text(
+                        errorMessage!,
+                        style: const TextStyle(color: AppColors.danger),
+                      ),
+                    ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: deleting
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Cancelar'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.danger,
+                  ),
+                  onPressed: deleting
+                      ? null
+                      : () async {
+                          if (deleting) return;
+                          update(() {
+                            deleting = true;
+                            errorMessage = null;
+                          });
+                          try {
+                            await ref
+                                .read(expenseViewModelProvider.notifier)
+                                .deleteExpense(expense.id);
+                            if (dialogContext.mounted) {
+                              Navigator.of(dialogContext).pop(true);
+                            }
+                          } catch (error) {
+                            if (context.mounted) {
+                              update(() {
+                                deleting = false;
+                                errorMessage =
+                                    error is ExpenseOwnershipUnverified
+                                    ? 'Conéctate con la cuenta que registró este gasto para verificarlo antes de eliminarlo.'
+                                    : 'No se pudo eliminar el gasto. Inténtalo de nuevo.';
+                              });
+                            }
+                          }
+                        },
+                  child: Text(deleting ? 'Eliminando…' : 'Eliminar'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      if (deleted == true && mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Gasto eliminado.')));
+      }
+    } finally {
+      _deleteDialogOpen = false;
+    }
+  }
+
   DateTime _selectedMonth = _monthOf(DateTime.now());
   late final Future<void> _localeReady = initializeDateFormatting('es');
 
@@ -32,6 +141,13 @@ class _ExpenseListScreenState extends ConsumerState<ExpenseListScreen> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
+        actions: [
+          IconButton(
+            tooltip: 'Actualizar gastos',
+            onPressed: _refreshing ? null : _refreshExpenses,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
       bottomNavigationBar: SafeArea(
         top: false,
@@ -60,73 +176,84 @@ class _ExpenseListScreenState extends ConsumerState<ExpenseListScreen> {
           ),
         ),
       ),
-      body: FutureBuilder<void>(
-        future: _localeReady,
-        builder: (context, locale) {
-          if (locale.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          return expenses.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (_, _) =>
-                const Center(child: Text('No se pudieron cargar los gastos.')),
-            data: (items) {
-              final months = _availableMonths(items);
-              final selected = months.contains(_selectedMonth)
-                  ? _selectedMonth
-                  : _monthOf(DateTime.now());
-              final visible =
-                  items.where((e) => _monthOf(e.date) == selected).toList()
-                    ..sort((a, b) => b.date.compareTo(a.date));
-              final total = visible.fold<double>(0, (sum, e) => sum + e.amount);
-              return ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                children: [
-                  _MonthSelector(
-                    months: months,
-                    selected: selected,
-                    onChanged: (month) =>
-                        setState(() => _selectedMonth = month),
-                  ),
-                  const SizedBox(height: 16),
-                  _ExpenseMonthSummary(total: total, count: visible.length),
-                  const SizedBox(height: 24),
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Gastos registrados',
-                          style: TextStyle(
-                            fontSize: 17,
+      body: RefreshIndicator(
+        onRefresh: _refreshExpenses,
+        child: FutureBuilder<void>(
+          future: _localeReady,
+          builder: (context, locale) {
+            if (locale.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            return expenses.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (_, _) => const Center(
+                child: Text('No se pudieron cargar los gastos.'),
+              ),
+              data: (items) {
+                final months = _availableMonths(items);
+                final selected = months.contains(_selectedMonth)
+                    ? _selectedMonth
+                    : _monthOf(DateTime.now());
+                final visible =
+                    items.where((e) => _monthOf(e.date) == selected).toList()
+                      ..sort((a, b) => b.date.compareTo(a.date));
+                final total = visible.fold<double>(
+                  0,
+                  (sum, e) => sum + e.amount,
+                );
+                return ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  children: [
+                    _MonthSelector(
+                      months: months,
+                      selected: selected,
+                      onChanged: (month) =>
+                          setState(() => _selectedMonth = month),
+                    ),
+                    const SizedBox(height: 16),
+                    _ExpenseMonthSummary(total: total, count: visible.length),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Gastos registrados',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '${visible.length}',
+                          key: const Key('expense-month-count'),
+                          style: const TextStyle(
+                            color: AppColors.muted,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                      ),
-                      Text(
-                        '${visible.length}',
-                        key: const Key('expense-month-count'),
-                        style: const TextStyle(
-                          color: AppColors.muted,
-                          fontWeight: FontWeight.bold,
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (visible.isEmpty)
+                      _EmptyExpensesMonth(month: selected)
+                    else
+                      ...visible.map(
+                        (expense) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _ExpenseCard(
+                            expense: expense,
+                            onDelete: () => _confirmDelete(expense),
+                          ),
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  if (visible.isEmpty)
-                    _EmptyExpensesMonth(month: selected)
-                  else
-                    ...visible.map(
-                      (expense) => Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: _ExpenseCard(expense: expense),
-                      ),
-                    ),
-                ],
-              );
-            },
-          );
-        },
+                  ],
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }
@@ -258,8 +385,9 @@ class _ExpensePanel extends StatelessWidget {
 }
 
 class _ExpenseCard extends StatelessWidget {
-  const _ExpenseCard({required this.expense});
+  const _ExpenseCard({required this.expense, required this.onDelete});
   final Expense expense;
+  final VoidCallback onDelete;
   @override
   Widget build(BuildContext context) => _ExpensePanel(
     child: Row(
@@ -298,6 +426,13 @@ class _ExpenseCard extends StatelessWidget {
               ),
             ],
           ),
+        ),
+        IconButton(
+          key: ValueKey('delete-expense-${expense.id}'),
+          tooltip: 'Eliminar gasto',
+          color: AppColors.danger,
+          onPressed: onDelete,
+          icon: const Icon(Icons.delete_outline),
         ),
       ],
     ),
