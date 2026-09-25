@@ -130,18 +130,24 @@ class AnimalLocalDataSource {
         payload,
         animal.updatedAt,
         pending: false,
+        verifiedRemoteOwner: snapshot.ownerId,
       );
     }
     // Missing remote rows are not deletions. No files are removed.
   });
 
-  Future<void> saveMovement(Movement movement, {bool pending = true}) {
+  Future<void> saveMovement(
+    Movement movement, {
+    bool pending = true,
+    String? verifiedRemoteOwner,
+  }) {
     return _database.putRecord(
       'movements',
       movement.id,
       MovementModel.toJson(movement),
       movement.date,
       pending: pending,
+      verifiedRemoteOwner: verifiedRemoteOwner,
     );
   }
 

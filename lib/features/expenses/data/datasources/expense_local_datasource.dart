@@ -11,13 +11,18 @@ class ExpenseLocalDataSource {
     'expenses',
   )).map(ExpenseModel.fromJson).toList();
 
-  Future<void> save(Expense expense, {bool pending = true}) {
+  Future<void> save(
+    Expense expense, {
+    bool pending = true,
+    String? verifiedRemoteOwner,
+  }) {
     return _database.putRecord(
       'expenses',
       expense.id,
       ExpenseModel.toJson(expense),
       expense.updatedAt,
       pending: pending,
+      verifiedRemoteOwner: verifiedRemoteOwner,
     );
   }
 

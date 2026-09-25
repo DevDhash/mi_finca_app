@@ -109,6 +109,45 @@ void main() {
     },
   );
 
+  test('DELETE has priority over the photo upload queue', () async {
+    await local.save(animal());
+    await database.markDeleted('animals', 'animal', 'user');
+    await sync.pushPendingChanges();
+    expect(storage.calls, 0);
+    expect(remote.payloads, isEmpty);
+    expect(await database.pendingCount(), 1);
+    expect(
+      (await database.readRecord(
+        'animals',
+        'animal',
+        includeDeleted: true,
+      ))!.operation,
+      'delete',
+    );
+    expect(photo.existsSync(), true);
+  });
+
+  test(
+    'DELETE during upload prevents publication and stale photo acknowledgement',
+    () async {
+      await local.save(animal());
+      storage.beforeUpload = () =>
+          database.markDeleted('animals', 'animal', 'user');
+      await sync.pushPendingChanges();
+      expect(remote.payloads, isEmpty);
+      expect(await database.pendingCount(), 1);
+      expect(
+        (await database.readRecord(
+          'animals',
+          'animal',
+          includeDeleted: true,
+        ))!.isDeleted,
+        true,
+      );
+      expect(photo.existsSync(), true);
+    },
+  );
+
   test('upload precedes publication; only remote path leaves device', () async {
     await local.save(animal());
     remote.beforePush = (_) async => expect(storage.objects, hasLength(1));

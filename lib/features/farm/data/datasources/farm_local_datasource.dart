@@ -14,6 +14,12 @@ class FarmLocalDataSource {
       return FarmModel.fromJson(records.first);
     }
 
+    if ((await _database.readRecords(
+      'farms',
+      includeDeleted: true,
+    )).isNotEmpty) {
+      return null;
+    }
     final legacyRaw = await _database.readSetting('farm');
     if (legacyRaw == null) return null;
 
@@ -22,13 +28,18 @@ class FarmLocalDataSource {
     );
   }
 
-  Future<void> write(Farm farm, {bool pending = true}) {
+  Future<void> write(
+    Farm farm, {
+    bool pending = true,
+    String? verifiedRemoteOwner,
+  }) {
     return _database.putRecord(
       'farms',
       farm.id,
       FarmModel.toJson(farm),
       DateTime.now(),
       pending: pending,
+      verifiedRemoteOwner: verifiedRemoteOwner,
     );
   }
 }

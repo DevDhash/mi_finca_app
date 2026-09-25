@@ -6,6 +6,7 @@ class PaddockRemoteDataSource {
   const PaddockRemoteDataSource(this._client);
 
   final SupabaseClient _client;
+  String? get currentUserId => _client.auth.currentUser?.id;
 
   Future<void> upsert(Paddock paddock) async {
     final user = _client.auth.currentUser;

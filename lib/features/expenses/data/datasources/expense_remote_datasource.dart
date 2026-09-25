@@ -6,6 +6,7 @@ class ExpenseRemoteDataSource {
   const ExpenseRemoteDataSource(this._client);
 
   final SupabaseClient _client;
+  String? get currentUserId => _client.auth.currentUser?.id;
 
   Future<void> upsert(Expense expense) async {
     final user = _client.auth.currentUser;

@@ -5,6 +5,7 @@ class FarmRemoteDataSource {
   const FarmRemoteDataSource(this._client);
 
   final SupabaseClient _client;
+  String? get currentUserId => _client.auth.currentUser?.id;
 
   Future<void> upsertFarm(Farm farm) async {
     final user = _client.auth.currentUser;

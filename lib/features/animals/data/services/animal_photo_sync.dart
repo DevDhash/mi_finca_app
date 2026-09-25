@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:mi_finca_app/core/database/sync_metadata.dart';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
@@ -28,7 +29,6 @@ class AnimalPhotoSync {
   }
 
   Future<void> discoverLocalPhotos() => _database.runInTransaction(() async {
-    final owner = await _localOwner();
     for (final payload in await _database.readRecords('animals')) {
       final localPath = AnimalPhotoUpload.localPath(payload);
       // A remote-only reference or a future downloaded cache is not an upload.
@@ -42,7 +42,10 @@ class AnimalPhotoSync {
         payload['id']! as String,
         {
           ...payload,
-          AnimalPhotoUpload.key: AnimalPhotoUpload.create(localPath, owner),
+          AnimalPhotoUpload.key: AnimalPhotoUpload.create(
+            localPath,
+            SyncMetadata.owner(payload),
+          ),
           'syncStatus': 'pending',
         },
         DateTime.parse(payload['updatedAt']! as String),
@@ -54,6 +57,7 @@ class AnimalPhotoSync {
     PendingRecord initial,
     Future<void> Function(PendingRecord) publish,
   ) async {
+    if (initial.isDeleted) return false;
     var record = initial;
     var job = AnimalPhotoUpload.read(record.payload);
     if (job == null) {

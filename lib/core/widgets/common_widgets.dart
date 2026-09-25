@@ -88,18 +88,9 @@ class EmptyState extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (imagePath != null)
-            Image.asset(
-              imagePath!,
-              width: 90,
-              height: 90,
-              fit: BoxFit.contain,
-            )
+            Image.asset(imagePath!, width: 90, height: 90, fit: BoxFit.contain)
           else if (icon != null)
-            Icon(
-              icon,
-              size: 68,
-              color: AppColors.primary,
-            ),
+            Icon(icon, size: 68, color: AppColors.primary),
 
           const SizedBox(height: 16),
 
@@ -111,10 +102,7 @@ class EmptyState extends StatelessWidget {
 
           const SizedBox(height: 20),
 
-          FilledButton(
-            onPressed: onAction,
-            child: Text(actionLabel),
-          ),
+          FilledButton(onPressed: onAction, child: Text(actionLabel)),
         ],
       ),
     ),

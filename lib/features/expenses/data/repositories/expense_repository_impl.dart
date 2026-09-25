@@ -21,8 +21,10 @@ class ExpenseRepositoryImpl implements ExpenseRepository {
     if (localItems.isNotEmpty) return localItems;
 
     try {
+      final owner = _remote.currentUserId;
       final remoteItems = await _remote.getAll();
 
+      if (_remote.currentUserId != owner) throw StateError('La sesión cambió.');
       for (final expense in remoteItems) {
         await _local.save(
           Expense(
@@ -35,10 +37,11 @@ class ExpenseRepositoryImpl implements ExpenseRepository {
             syncStatus: SyncStatus.synced,
           ),
           pending: false,
+          verifiedRemoteOwner: owner,
         );
       }
 
-      return remoteItems;
+      return _local.getAll();
     } catch (_) {
       return localItems;
     }

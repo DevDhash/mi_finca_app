@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
+import 'package:mi_finca_app/core/database/sync_metadata.dart';
 
 /// A small schema-less Drift store. Domain repositories own serialization,
 /// which keeps the UI independent from both SQLite and a future REST backend.
@@ -79,7 +80,10 @@ final class AppDatabase extends GeneratedDatabase {
     },
   );
 
-  Future<List<Map<String, Object?>>> readRecords(String collection) async {
+  Future<List<Map<String, Object?>>> readRecords(
+    String collection, {
+    bool includeDeleted = false,
+  }) async {
     final rows = await customSelect(
       'SELECT payload FROM records WHERE collection = ? ORDER BY updated_at DESC',
       variables: [Variable.withString(collection)],
@@ -91,6 +95,7 @@ final class AppDatabase extends GeneratedDatabase {
             jsonDecode(row.read<String>('payload')) as Map,
           ),
         )
+        .where((payload) => includeDeleted || !SyncMetadata.isDeleted(payload))
         .toList();
   }
 
@@ -124,8 +129,74 @@ final class AppDatabase extends GeneratedDatabase {
     Map<String, Object?> payload,
     DateTime updatedAt, {
     bool pending = true,
+    String? verifiedRemoteOwner,
   }) async {
-    _requireWritableSession();
+    return transaction(() async {
+      _requireWritableSession();
+      final previous = await readRecord(collection, id, includeDeleted: true);
+      if (previous?.isDeleted == true) {
+        if (pending) throw StateError('El registro está eliminado.');
+        return; // A stale active download must never resurrect a tombstone.
+      }
+      if (!pending &&
+          (await readPendingRecords()).any(
+            (r) => r.collection == collection && r.id == id,
+          )) {
+        return;
+      }
+      if (verifiedRemoteOwner != null) await requireOwner(verifiedRemoteOwner);
+      final oldMeta = SyncMetadata.read(previous?.payload ?? {});
+      final oldOwner = SyncMetadata.owner(previous?.payload ?? {});
+      final sessionOwner = await localOwner();
+      if (oldOwner != null && oldOwner != sessionOwner) {
+        throw StateError('El registro pertenece a otra cuenta.');
+      }
+      // Only a NEW local operation can obtain ownership from the active session.
+      // Editing an old unowned row is not evidence of its original ownership.
+      final persistedPhotoOwner =
+          (previous?.payload['_photoUpload'] as Map?)?['ownerId'] as String?;
+      final owner =
+          oldOwner ??
+          verifiedRemoteOwner ??
+          (persistedPhotoOwner == sessionOwner ? persistedPhotoOwner : null) ??
+          (previous == null && pending ? sessionOwner : null);
+      if (persistedPhotoOwner != null && persistedPhotoOwner != sessionOwner) {
+        throw StateError('La foto pertenece a otra cuenta.');
+      }
+      final next = {...payload};
+      if (pending) {
+        next[SyncMetadata.key] = SyncMetadata.operation(
+          ownerId: owner,
+          operation: 'upsert',
+          revision: (oldMeta['revision'] as int? ?? 0) + 1,
+          requestedAt: DateTime.now(),
+        );
+      } else if (verifiedRemoteOwner != null) {
+        next[SyncMetadata.key] = {
+          ...SyncMetadata.operation(
+            ownerId: verifiedRemoteOwner,
+            operation: 'upsert',
+            revision: (oldMeta['revision'] as int? ?? 0) + 1,
+            requestedAt: updatedAt,
+          ),
+          'ownership': 'verified_remote',
+        };
+      } else if (oldMeta.isNotEmpty) {
+        next[SyncMetadata.key] = oldMeta;
+      } else {
+        next.remove(SyncMetadata.key);
+      }
+      await _writeRecord(collection, id, next, updatedAt, pending: pending);
+    });
+  }
+
+  Future<void> _writeRecord(
+    String collection,
+    String id,
+    Map<String, Object?> payload,
+    DateTime updatedAt, {
+    required bool pending,
+  }) async {
     await customStatement(
       'INSERT OR REPLACE INTO records '
       '(collection, id, payload, updated_at, pending) VALUES (?, ?, ?, ?, ?)',
@@ -137,17 +208,32 @@ final class AppDatabase extends GeneratedDatabase {
         pending ? 1 : 0,
       ],
     );
-
     _recordChanges.add(null);
   }
 
-  Future<PendingRecord?> readRecord(String collection, String id) async {
+  Future<String?> localOwner() async {
+    final raw = await readSetting('session');
+    return raw == null ? null : (jsonDecode(raw) as Map)['id'] as String?;
+  }
+
+  Future<void> requireOwner(String ownerId) async {
+    _requireWritableSession();
+    if (ownerId.isEmpty || await localOwner() != ownerId) {
+      throw StateError('La operación pertenece a otra sesión.');
+    }
+  }
+
+  Future<PendingRecord?> readRecord(
+    String collection,
+    String id, {
+    bool includeDeleted = false,
+  }) async {
     final row = await customSelect(
       'SELECT payload, updated_at FROM records WHERE collection = ? AND id = ?',
       variables: [Variable.withString(collection), Variable.withString(id)],
     ).getSingleOrNull();
     if (row == null) return null;
-    return PendingRecord(
+    final record = PendingRecord(
       collection: collection,
       id: id,
       payload: Map<String, Object?>.from(
@@ -157,7 +243,150 @@ final class AppDatabase extends GeneratedDatabase {
         row.read<int>('updated_at'),
       ),
     );
+    return !includeDeleted && record.isDeleted ? null : record;
   }
+
+  /// Durable intent, not physical removal. Ownership must already be proven.
+  Future<void> markDeleted(
+    String collection,
+    String id,
+    String ownerId,
+  ) => transaction(() async {
+    await requireOwner(ownerId);
+    if (!SyncMetadata.collections.contains(collection)) {
+      throw ArgumentError.value(collection, 'collection');
+    }
+    final record = await readRecord(collection, id, includeDeleted: true);
+    if (record == null) throw StateError('El registro no existe localmente.');
+    if (record.ownerId != ownerId) {
+      throw StateError('Propietario no verificado para este registro.');
+    }
+    if (record.isDeleted) return; // Keep identity, revision and ack unchanged.
+    final now = DateTime.now();
+    final meta = SyncMetadata.operation(
+      ownerId: ownerId,
+      operation: 'delete',
+      revision: record.revision + 1,
+      requestedAt: now,
+    );
+    await _writeRecord(
+      collection,
+      id,
+      {...record.payload, SyncMetadata.key: meta},
+      now,
+      pending: true,
+    );
+  });
+
+  /// Call only after an authenticated remote ownership check for this snapshot.
+  Future<bool> adoptVerifiedOwner(PendingRecord expected, String ownerId) =>
+      transaction(() async {
+        await requireOwner(ownerId);
+        if (expected.ownerId != null && expected.ownerId != ownerId) {
+          throw StateError('El registro pertenece a otra cuenta.');
+        }
+        final photoOwner =
+            (expected.payload['_photoUpload'] as Map?)?['ownerId'];
+        if (photoOwner != null && photoOwner != ownerId) {
+          throw StateError('La foto pertenece a otra cuenta.');
+        }
+        final pending = (await readPendingRecords()).any(
+          (r) => r.collection == expected.collection && r.id == expected.id,
+        );
+        final meta = SyncMetadata.read(expected.payload);
+        return replaceRecordIfUnchanged(expected, {
+          ...expected.payload,
+          SyncMetadata.key: {
+            if (meta.isEmpty)
+              ...SyncMetadata.operation(
+                ownerId: ownerId,
+                operation: 'upsert',
+                revision: 1,
+                requestedAt: expected.updatedAt,
+              ),
+            ...meta,
+            'ownerId': ownerId,
+            'ownership': 'verified',
+          },
+        }, pending: pending);
+      });
+
+  Future<void> mergeRemoteTombstones(
+    String ownerId,
+    List<RemoteTombstone> tombstones,
+  ) => transaction(() async {
+    await requireOwner(ownerId);
+    for (final remote in tombstones) {
+      if (remote.ownerId != ownerId ||
+          !SyncMetadata.collections.contains(remote.collection)) {
+        throw StateError('Tombstone remoto inválido.');
+      }
+      final current = await readRecord(
+        remote.collection,
+        remote.id,
+        includeDeleted: true,
+      );
+      if (current?.ownerId != null && current!.ownerId != ownerId) {
+        throw StateError('El registro local pertenece a otra cuenta.');
+      }
+      final photoOwner = (current?.payload['_photoUpload'] as Map?)?['ownerId'];
+      if (photoOwner != null && photoOwner != ownerId) {
+        throw StateError('La foto local pertenece a otra cuenta.');
+      }
+      final pending = (await readPendingRecords()).any(
+        (r) => r.collection == remote.collection && r.id == remote.id,
+      );
+      final oldMeta = SyncMetadata.read(current?.payload ?? {});
+      final meta = {
+        ...oldMeta,
+        'ownerId': ownerId,
+        'ownership': 'verified',
+        'operation': 'delete',
+        'tombstone': true,
+        'operationId': current?.isDeleted == true
+            ? oldMeta['operationId']
+            : remote.operationId,
+        'revision': current?.isDeleted == true
+            ? current!.revision
+            : (current?.revision ?? 0) + 1,
+        'requestedAt':
+            oldMeta['requestedAt'] ?? remote.deletedAt.toIso8601String(),
+        'deletedAt': remote.deletedAt.toUtc().toIso8601String(),
+        'remoteOperationId': remote.operationId,
+        if (pending && current?.isDeleted != true)
+          'conflict': 'remote_delete_wins',
+      };
+      // Keep domain/photo bytes for history and future cleanup, never upload them.
+      await _writeRecord(
+        remote.collection,
+        remote.id,
+        {...?current?.payload, 'id': remote.id, SyncMetadata.key: meta},
+        current?.updatedAt ?? remote.deletedAt,
+        pending: false,
+      );
+    }
+  });
+
+  Future<bool> acknowledgeDelete(
+    PendingRecord expected,
+    RemoteTombstone remote,
+  ) => transaction(() async {
+    if (!expected.isDeleted ||
+        expected.ownerId != remote.ownerId ||
+        expected.collection != remote.collection ||
+        expected.id != remote.id) {
+      throw StateError('Confirmación DELETE inválida.');
+    }
+    await requireOwner(remote.ownerId);
+    return replaceRecordIfUnchanged(expected, {
+      ...expected.payload,
+      SyncMetadata.key: {
+        ...SyncMetadata.read(expected.payload),
+        'deletedAt': remote.deletedAt.toUtc().toIso8601String(),
+        'remoteOperationId': remote.operationId,
+      },
+    }, pending: false);
+  });
 
   /// Compare the complete snapshot, not just a millisecond timestamp. A stale
   /// network response must never acknowledge or replace a newer local edit.
@@ -167,6 +396,10 @@ final class AppDatabase extends GeneratedDatabase {
     required bool pending,
   }) async {
     if (_closingSession) return false;
+    if (expected.ownerId != null && await localOwner() != expected.ownerId) {
+      return false;
+    }
+    if (expected.isDeleted && !SyncMetadata.isDeleted(payload)) return false;
     final changed = await customUpdate(
       'UPDATE records SET payload = ?, pending = ? '
       'WHERE collection = ? AND id = ? AND payload = ? AND updated_at = ?',
@@ -184,14 +417,21 @@ final class AppDatabase extends GeneratedDatabase {
     return changed > 0;
   }
 
-  Future<void> removeRecord(String collection, String id) async {
-    await customStatement(
-      'DELETE FROM records WHERE collection = ? AND id = ?',
-      [collection, id],
-    );
+  Future<void> removeRecord(String collection, String id) => transaction(
+    () async {
+      _requireWritableSession();
+      if ((await readRecord(collection, id, includeDeleted: true))?.isDeleted ==
+          true) {
+        throw StateError('No se puede eliminar físicamente un tombstone.');
+      }
+      await customStatement(
+        'DELETE FROM records WHERE collection = ? AND id = ?',
+        [collection, id],
+      );
 
-    _recordChanges.add(null);
-  }
+      _recordChanges.add(null);
+    },
+  );
 
   Future<int> pendingCount() async {
     final row = await customSelect(
@@ -201,23 +441,34 @@ final class AppDatabase extends GeneratedDatabase {
     return row.read<int>('count');
   }
 
-  Future<void> markRecordSynced(String collection, String id) async {
-    await customStatement(
-      '''
+  Future<void> markRecordSynced(String collection, String id) => transaction(
+    () async {
+      _requireWritableSession();
+      if ((await readRecord(collection, id, includeDeleted: true))?.isDeleted ==
+          true) {
+        throw StateError('DELETE requiere confirmación por snapshot.');
+      }
+      await customStatement(
+        '''
       UPDATE records
       SET pending = 0
       WHERE collection = ? AND id = ?
       ''',
-      [collection, id],
-    );
+        [collection, id],
+      );
 
-    _recordChanges.add(null);
-  }
+      _recordChanges.add(null);
+    },
+  );
 
-  Future<void> markAllSynced() async {
+  Future<void> markAllSynced() => transaction(() async {
+    _requireWritableSession();
+    if ((await readPendingRecords()).any((r) => r.isDeleted)) {
+      throw StateError('DELETE requiere confirmación individual.');
+    }
     await customStatement('UPDATE records SET pending = 0');
     _recordChanges.add(null);
-  }
+  });
 
   Future<String?> readSetting(String key) async {
     final row = await customSelect(
@@ -241,6 +492,9 @@ final class AppDatabase extends GeneratedDatabase {
 
   Future<void> clearAll() async {
     await transaction(() async {
+      if ((await readPendingRecords()).any((r) => r.isDeleted)) {
+        throw const PendingSessionChanges();
+      }
       await customStatement('DELETE FROM records');
       await customStatement('DELETE FROM settings');
     });
@@ -267,6 +521,13 @@ class PendingRecord {
   final String id;
   final Map<String, Object?> payload;
   final DateTime updatedAt;
+  bool get isDeleted => SyncMetadata.isDeleted(payload);
+  String? get ownerId => SyncMetadata.owner(payload);
+  String get operation =>
+      SyncMetadata.read(payload)['operation'] as String? ?? 'upsert';
+  String? get operationId =>
+      SyncMetadata.read(payload)['operationId'] as String?;
+  int get revision => SyncMetadata.read(payload)['revision'] as int? ?? 0;
 }
 
 class PendingSessionChanges implements Exception {

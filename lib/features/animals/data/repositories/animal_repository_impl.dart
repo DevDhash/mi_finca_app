@@ -8,11 +8,14 @@ class AnimalRepositoryImpl implements AnimalRepository {
   const AnimalRepositoryImpl({
     required AnimalLocalDataSource local,
     required AnimalRemoteDataSource remote,
+    Future<void> Function()? pullTombstones,
   }) : _local = local,
-       _remote = remote;
+       _remote = remote,
+       _pullTombstones = pullTombstones;
 
   final AnimalLocalDataSource _local;
   final AnimalRemoteDataSource _remote;
+  final Future<void> Function()? _pullTombstones;
 
   @override
   Future<List<Animal>> getAll() async {
@@ -33,6 +36,7 @@ class AnimalRepositoryImpl implements AnimalRepository {
     if (owner == null) {
       throw StateError('Inicia sesión para actualizar animales.');
     }
+    await _pullTombstones?.call();
     final snapshot = await _local.snapshotForRefresh(owner);
     final remoteItems = await _remote.getAnimals();
     if (_remote.currentUserId != owner) {
@@ -49,13 +53,19 @@ class AnimalRepositoryImpl implements AnimalRepository {
     if (localItems.isNotEmpty) return localItems;
 
     try {
+      final owner = _remote.currentUserId;
       final remoteItems = await _remote.getMovements();
+      if (_remote.currentUserId != owner) throw StateError('La sesión cambió.');
 
       for (final movement in remoteItems) {
-        await _local.saveMovement(movement, pending: false);
+        await _local.saveMovement(
+          movement,
+          pending: false,
+          verifiedRemoteOwner: owner,
+        );
       }
 
-      return remoteItems;
+      return _local.getMovements();
     } catch (_) {
       return localItems;
     }

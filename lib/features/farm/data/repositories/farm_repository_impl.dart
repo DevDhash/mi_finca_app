@@ -22,13 +22,19 @@ class FarmRepositoryImpl implements FarmRepository {
     }
 
     try {
+      final owner = _remote.currentUserId;
       final remoteFarm = await _remote.readCurrentUserFarm();
 
+      if (_remote.currentUserId != owner) throw StateError('La sesión cambió.');
       if (remoteFarm != null) {
-        await _local.write(remoteFarm, pending: false);
+        await _local.write(
+          remoteFarm,
+          pending: false,
+          verifiedRemoteOwner: owner,
+        );
       }
 
-      return remoteFarm;
+      return _local.read();
     } catch (_) {
       return null;
     }

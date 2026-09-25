@@ -11,13 +11,18 @@ class PaddockLocalDataSource {
     'paddocks',
   )).map(PaddockModel.fromJson).toList();
 
-  Future<void> save(Paddock paddock, {bool pending = true}) {
+  Future<void> save(
+    Paddock paddock, {
+    bool pending = true,
+    String? verifiedRemoteOwner,
+  }) {
     return _database.putRecord(
       'paddocks',
       paddock.id,
       PaddockModel.toJson(paddock),
       paddock.updatedAt,
       pending: pending,
+      verifiedRemoteOwner: verifiedRemoteOwner,
     );
   }
 

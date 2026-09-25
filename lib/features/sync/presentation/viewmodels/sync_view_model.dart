@@ -1,3 +1,7 @@
+import 'package:mi_finca_app/features/animals/presentation/viewmodels/animal_view_model.dart';
+import 'package:mi_finca_app/features/expenses/presentation/viewmodels/expense_view_model.dart';
+import 'package:mi_finca_app/features/paddocks/presentation/viewmodels/paddock_view_model.dart';
+import 'package:mi_finca_app/features/farm/presentation/viewmodels/farm_view_model.dart';
 import 'dart:async';
 
 import 'package:mi_finca_app/core/network/network_status.dart';
@@ -119,6 +123,16 @@ class SyncViewModel extends AsyncNotifier<SyncState> {
 
   Future<void> syncNow() async {
     await _syncPendingChanges(state.requireValue);
+    if (!state.requireValue.isOnline) return;
+    final repository = ref.read(syncRepositoryProvider);
+    if (repository is TombstoneSyncRepository) {
+      await repository.pullRemoteTombstones();
+      if (!ref.mounted) return;
+      ref.invalidate(animalViewModelProvider);
+      ref.invalidate(expenseViewModelProvider);
+      ref.invalidate(paddockViewModelProvider);
+      ref.invalidate(farmViewModelProvider);
+    }
   }
 
   Future<void> syncPendingIfOnline() async {

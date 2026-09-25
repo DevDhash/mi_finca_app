@@ -13,6 +13,7 @@ import 'package:mi_finca_app/features/paddocks/domain/entities/paddock.dart';
 import 'package:mi_finca_app/features/paddocks/domain/services/paddock_operational_status.dart';
 import 'package:mi_finca_app/features/paddocks/presentation/viewmodels/paddock_view_model.dart';
 import 'package:mi_finca_app/features/sync/presentation/viewmodels/sync_view_model.dart';
+import 'package:mi_finca_app/features/sync/domain/repositories/sync_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AnimalState {
@@ -40,6 +41,10 @@ final animalRepositoryProvider = Provider<AnimalRepository>(
   (ref) => AnimalRepositoryImpl(
     local: ref.watch(animalLocalDataSourceProvider),
     remote: ref.watch(animalRemoteDataSourceProvider),
+    pullTombstones: () async {
+      final sync = ref.read(syncRepositoryProvider);
+      if (sync is TombstoneSyncRepository) await sync.pullRemoteTombstones();
+    },
   ),
 );
 
