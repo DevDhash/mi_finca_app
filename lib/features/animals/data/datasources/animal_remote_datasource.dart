@@ -12,6 +12,18 @@ class AnimalRemoteDataSource {
 
   String? get currentUserId => _client.auth.currentUser?.id;
 
+  /// Positive physical-row evidence, including a soft-deleted row.
+  Future<bool> verifyAnimalOwner(String id, String owner) async {
+    if (currentUserId != owner) return false;
+    final row = await _client
+        .from('animals')
+        .select('id')
+        .eq('id', id)
+        .eq('user_id', owner)
+        .maybeSingle();
+    return currentUserId == owner && row != null;
+  }
+
   Future<void> upsertAnimal(Animal animal) async {
     final user = _client.auth.currentUser;
 

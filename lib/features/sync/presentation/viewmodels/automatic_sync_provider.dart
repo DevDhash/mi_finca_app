@@ -18,6 +18,9 @@ final automaticSyncProvider = Provider.autoDispose<AutomaticSync>((ref) {
     pendingCount: repository.pendingCount,
     changes: repository.changes,
   );
+  Timer? scheduledUpdate;
+  var resetBackoff = false;
+
   void update() {
     if (!ref.mounted) return;
     final network = ref.read(networkStatusProvider).asData?.value ?? true;
@@ -26,29 +29,44 @@ final automaticSyncProvider = Provider.autoDispose<AutomaticSync>((ref) {
       foreground &&
           network &&
           !ref.read(manualOfflineProvider) &&
-          auth.currentUserId != null,
+          ref.read(animalPhotoUrlSourceProvider).currentUserId != null,
     );
+    if (resetBackoff) {
+      resetBackoff = false;
+      worker.trigger(resetBackoff: true);
+    }
   }
 
-  ref.listen(networkStatusProvider, (_, _) => update());
-  ref.listen(manualOfflineProvider, (_, _) => update());
+  // Listeners may run while Flutter/Riverpod is flushing a build. A zero-time
+  // timer crosses that synchronous boundary; it is not a time-based delay.
+  // Keep one callback per burst and read live inputs only when it executes.
+  void scheduleUpdate({bool reset = false}) {
+    if (!ref.mounted) return;
+    resetBackoff |= reset;
+    scheduledUpdate ??= Timer(Duration.zero, () {
+      scheduledUpdate = null;
+      if (!ref.mounted) return;
+      update();
+    });
+  }
+
+  ref.listen(networkStatusProvider, (_, _) => scheduleUpdate());
+  ref.listen(manualOfflineProvider, (_, _) => scheduleUpdate());
   final authSubscription = auth.authChanges.listen((_) {
-    update();
-    worker.trigger(resetBackoff: true);
+    scheduleUpdate(reset: true);
   });
   final lifecycle = AppLifecycleListener(
     onStateChange: (state) {
       foreground = state == AppLifecycleState.resumed;
-      update();
+      scheduleUpdate(reset: foreground);
       if (foreground) {
         ref.invalidate(networkStatusProvider);
-        worker.trigger(resetBackoff: true);
       }
     },
   );
-  // Delay state changes until after the build that starts the worker.
-  scheduleMicrotask(update);
+  scheduleUpdate();
   ref.onDispose(() {
+    scheduledUpdate?.cancel();
     worker.dispose();
     lifecycle.dispose();
     unawaited(authSubscription.cancel());

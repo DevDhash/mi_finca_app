@@ -267,11 +267,14 @@ final class AppDatabase extends GeneratedDatabase {
   }
 
   /// Durable intent, not physical removal. Ownership must already be proven.
-  Future<void> markDeleted(
+  Future<void> markDeleted(String collection, String id, String ownerId) =>
+      transaction(() => _markDeletedInTransaction(collection, id, ownerId));
+
+  Future<void> _markDeletedInTransaction(
     String collection,
     String id,
     String ownerId,
-  ) => transaction(() async {
+  ) async {
     await requireOwner(ownerId);
     if (!SyncMetadata.collections.contains(collection)) {
       throw ArgumentError.value(collection, 'collection');
@@ -302,7 +305,98 @@ final class AppDatabase extends GeneratedDatabase {
       now,
       pending: true,
     );
-  });
+  }
+
+  /// Competes with beginRemotePublish in the same SQLite transaction. No remote ACK.
+  Future<AnimalLocalDeletion> deleteAnimalLocally(String id, String owner) =>
+      transaction(() async {
+        await requireOwner(owner);
+        final animal = await readRecord('animals', id, includeDeleted: true);
+        if (animal == null) return AnimalLocalDeletion.notFound;
+        if (animal.ownerId != owner) {
+          return AnimalLocalDeletion.needsVerification;
+        }
+        final photoOwner = (animal.payload['_photoUpload'] as Map?)?['ownerId'];
+        if (photoOwner != null && photoOwner != owner) {
+          return AnimalLocalDeletion.needsVerification;
+        }
+        if (animal.isDeleted) return AnimalLocalDeletion.alreadyDeleted;
+        if (animal.remotePresence == RemotePresence.confirmed) {
+          await _markDeletedInTransaction('animals', id, owner);
+          return AnimalLocalDeletion.accepted;
+        }
+        if (animal.remotePresence != RemotePresence.localOnly) {
+          return AnimalLocalDeletion.needsVerification;
+        }
+        final pending = (await readPendingRecords())
+            .map((r) => '${r.collection}/${r.id}')
+            .toSet();
+        bool cancellable(PendingRecord record) {
+          final meta = SyncMetadata.read(record.payload);
+          return record.ownerId == owner &&
+              record.remotePresence == RemotePresence.localOnly &&
+              meta['deletedAt'] == null &&
+              meta['remoteOperationId'] == null &&
+              (record.isDeleted
+                  ? meta['localCancellation'] == true
+                  : record.operation == 'upsert' &&
+                        record.operationId != null &&
+                        record.revision > 0 &&
+                        pending.contains('${record.collection}/${record.id}'));
+        }
+
+        final photo = animal.payload['_photoUpload'] as Map?;
+        if (!cancellable(animal) ||
+            animal.payload['remotePhotoPath'] != null ||
+            photo?['target'] != null ||
+            photo?['status'] == 'uploaded' ||
+            photo?['status'] == 'published') {
+          return AnimalLocalDeletion.needsVerification;
+        }
+        final dependents = <PendingRecord>[];
+        for (final payload in await readRecords(
+          'movements',
+          includeDeleted: true,
+        )) {
+          if (payload['animalId'] != id) continue;
+          final movement = (await readRecord(
+            'movements',
+            payload['id']! as String,
+            includeDeleted: true,
+          ))!;
+          if (!cancellable(movement)) {
+            return AnimalLocalDeletion.needsVerification;
+          }
+          dependents.add(movement);
+        }
+        // Validate every dependent before writing any cancellation.
+        final now = DateTime.now();
+        for (final record in [...dependents, animal]) {
+          if (record.isDeleted) continue;
+          await _writeRecord(
+            record.collection,
+            record.id,
+            {
+              ...record.payload,
+              SyncMetadata.key: {
+                ...SyncMetadata.read(record.payload),
+                ...SyncMetadata.operation(
+                  ownerId: owner,
+                  operation: 'cancel',
+                  revision: record.revision + 1,
+                  requestedAt: now,
+                ),
+                'tombstone': true,
+                'localCancellation': true,
+                'remotePresence': 'local_only',
+              },
+            },
+            now,
+            pending: false,
+          );
+        }
+        return AnimalLocalDeletion.accepted;
+      });
 
   /// Call only after an authenticated remote ownership check for this snapshot.
   Future<bool> adoptVerifiedOwner(PendingRecord expected, String ownerId) =>
@@ -661,6 +755,13 @@ class PendingRecord {
   String? get operationId =>
       SyncMetadata.read(payload)['operationId'] as String?;
   int get revision => SyncMetadata.read(payload)['revision'] as int? ?? 0;
+}
+
+enum AnimalLocalDeletion {
+  accepted,
+  needsVerification,
+  notFound,
+  alreadyDeleted,
 }
 
 class PendingSessionChanges implements Exception {

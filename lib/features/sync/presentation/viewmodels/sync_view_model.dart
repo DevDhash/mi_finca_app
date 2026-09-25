@@ -175,6 +175,9 @@ class SyncViewModel extends AsyncNotifier<SyncState> {
             lastSync: lastSync,
           ),
         );
+        if (ref.exists(animalViewModelProvider)) {
+          await ref.read(animalViewModelProvider.notifier).reloadLocal();
+        }
       }
     }
   }

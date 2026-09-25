@@ -14,6 +14,20 @@ class AnimalLocalDataSource {
 
   final AppDatabase _database;
 
+  Future<String?> owner() => _database.localOwner();
+  Future<PendingRecord?> record(String id) =>
+      _database.readRecord('animals', id, includeDeleted: true);
+  Future<bool> hasStoredAnimals() async =>
+      (await _database.readRecords('animals', includeDeleted: true)).isNotEmpty;
+  Future<bool> hasStoredMovements() async => (await _database.readRecords(
+    'movements',
+    includeDeleted: true,
+  )).isNotEmpty;
+  Future<AnimalLocalDeletion> deleteAnimal(String id, String owner) =>
+      _database.deleteAnimalLocally(id, owner);
+  Future<void> confirm(String id, String owner) =>
+      _database.markRemoteConfirmed('animals', id, owner);
+
   Future<List<Animal>> getAll() async => (await _database.readRecords(
     'animals',
   )).map(AnimalModel.fromJson).toList();
@@ -147,19 +161,47 @@ class AnimalLocalDataSource {
     // Missing remote rows are not deletions. No files are removed.
   });
 
+  Future<void> saveMove(Animal animal, Movement movement) =>
+      _database.runInTransaction(() async {
+        final owner = await _database.localOwner();
+        final current = await _database.readRecord('animals', animal.id);
+        if (owner == null ||
+            current == null ||
+            current.ownerId != owner ||
+            movement.animalId != animal.id ||
+            current.payload['paddockId'] != movement.fromPaddockId) {
+          throw StateError(
+            'El animal ya no está disponible para este movimiento.',
+          );
+        }
+        // No await outside this transaction between validation and both writes.
+        await save(animal);
+        await saveMovement(movement);
+      });
+
   Future<void> saveMovement(
     Movement movement, {
     bool pending = true,
     String? verifiedRemoteOwner,
   }) {
-    return _database.putRecord(
-      'movements',
-      movement.id,
-      MovementModel.toJson(movement),
-      movement.date,
-      pending: pending,
-      verifiedRemoteOwner: verifiedRemoteOwner,
-    );
+    return _database.runInTransaction(() async {
+      if (pending) {
+        final owner = await _database.localOwner();
+        final parent = await _database.readRecord('animals', movement.animalId);
+        if (owner == null || parent == null || parent.ownerId != owner) {
+          throw StateError('El animal ya no está disponible para moverlo.');
+        }
+        await _database.requireOwner(owner);
+      }
+      await _database.putRecord(
+        'movements',
+        movement.id,
+        MovementModel.toJson(movement),
+        movement.date,
+        pending: pending,
+        verifiedRemoteOwner: verifiedRemoteOwner,
+      );
+    });
   }
 
   Future<void> markAnimalSynced(String id) {

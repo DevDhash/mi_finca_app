@@ -13,20 +13,23 @@ class MoveAnimal {
     String destinationId,
     DateTime date,
   ) async {
+    final active = (await _repository.getLocal())
+        .where((item) => item.id == animal.id)
+        .firstOrNull;
+    if (active == null) throw StateError('El animal ya no está disponible.');
     final movement = Movement(
       id: const Uuid().v4(),
       animalId: animal.id,
-      fromPaddockId: animal.paddockId,
+      fromPaddockId: active.paddockId,
       toPaddockId: destinationId,
       date: date,
     );
-    final moved = animal.copyWith(
+    final moved = active.copyWith(
       paddockId: destinationId,
       updatedAt: DateTime.now(),
       syncStatus: SyncStatus.pending,
     );
-    await _repository.saveMovement(movement);
-    await _repository.save(moved);
+    await _repository.saveMove(moved, movement);
     return (animal: moved, movement: movement);
   }
 }

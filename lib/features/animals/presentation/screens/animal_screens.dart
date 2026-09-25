@@ -1,5 +1,6 @@
 import 'package:mi_finca_app/features/animals/presentation/viewmodels/animal_photo_provider.dart';
 import 'dart:io';
+import 'package:mi_finca_app/features/animals/domain/repositories/animal_repository.dart';
 
 import 'package:flutter/material.dart';
 import 'package:mi_finca_app/features/animals/presentation/widgets/animal_photo_avatar.dart';
@@ -243,6 +244,7 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
   final weight = TextEditingController();
   final notes = TextEditingController();
   int step = 0;
+  bool saving = false;
   String type = 'Vaca';
   String sex = 'Hembra';
   String? paddockId;
@@ -295,6 +297,7 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
   }
 
   Future<void> save() async {
+    if (saving) return;
     if (!formKey.currentState!.validate()) {
       setState(() => step = 0);
       return;
@@ -318,12 +321,27 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
       createdAt: old?.createdAt ?? now,
       updatedAt: now,
     );
-    await ref.read(animalViewModelProvider.notifier).save(animal);
-    if (mounted) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('✓ Animal guardado')));
+    setState(() => saving = true);
+    try {
+      await ref.read(animalViewModelProvider.notifier).save(animal);
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('✓ Animal guardado')));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No se pudo guardar. El animal puede haber sido eliminado o la sesión cambió.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => saving = false);
     }
   }
 
@@ -351,7 +369,11 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
               if (step > 0) const SizedBox(width: 12),
               Expanded(
                 child: FilledButton(
-                  onPressed: step < 2 ? () => setState(() => step++) : save,
+                  onPressed: saving
+                      ? null
+                      : step < 2
+                      ? () => setState(() => step++)
+                      : save,
                   child: Text(step < 2 ? 'Siguiente' : 'Guardar animal'),
                 ),
               ),
@@ -548,14 +570,94 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
   }
 }
 
-class AnimalDetailScreen extends ConsumerWidget {
+class AnimalDetailScreen extends ConsumerStatefulWidget {
   const AnimalDetailScreen({super.key, required this.animalId});
   final String animalId;
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AnimalDetailScreen> createState() => _AnimalDetailScreenState();
+}
+
+class _AnimalDetailScreenState extends ConsumerState<AnimalDetailScreen> {
+  bool deleting = false;
+  bool leaving = false;
+  String get animalId => widget.animalId;
+
+  Future<void> deleteAnimal(Animal animal) async {
+    if (deleting || leaving) return;
+    setState(() => deleting = true);
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('¿Eliminar a ${animal.displayName}?'),
+          content: const Text(
+            'El animal dejará de aparecer en la finca. Esta acción se sincronizará cuando haya conexión.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+              onPressed: () {
+                if (ModalRoute.of(dialogContext)?.isCurrent == true) {
+                  Navigator.pop(dialogContext, true);
+                }
+              },
+              child: const Text('Eliminar'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      final result = await ref
+          .read(animalViewModelProvider.notifier)
+          .deleteAnimal(animalId);
+      if (!mounted) return;
+      final accepted =
+          result == AnimalDeletionResult.accepted ||
+          result == AnimalDeletionResult.alreadyDeleted ||
+          result == AnimalDeletionResult.notFound;
+      final message = switch (result) {
+        AnimalDeletionResult.ownershipFailure =>
+          'La sesión cambió. Vuelve a intentarlo.',
+        AnimalDeletionResult.needsVerification =>
+          'No pudimos verificar el estado de este animal. Conéctate a internet e intenta nuevamente.',
+        _ => 'Animal eliminado.',
+      };
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+      if (accepted && !leaving && ModalRoute.of(context)?.isCurrent == true) {
+        leaving = true;
+        Navigator.pop(context);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo eliminar el animal. Intenta nuevamente.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => deleting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final animalState = ref.watch(animalViewModelProvider).requireValue;
     final paddocks = ref.watch(paddockViewModelProvider).requireValue;
-    final animal = animalState.animals.firstWhere((a) => a.id == animalId);
+    final animal = animalState.animals
+        .where((a) => a.id == animalId)
+        .firstOrNull;
+    if (animal == null) {
+      return _AnimalUnavailable(autoClose: !deleting && !leaving);
+    }
     final paddock = paddocks.where((p) => p.id == animal.paddockId).firstOrNull;
     final moves = animalState.movements
         .where((m) => m.animalId == animalId)
@@ -568,6 +670,19 @@ class AnimalDetailScreen extends ConsumerWidget {
             onPressed: () => openAnimalForm(context, animal),
             icon: const Icon(Icons.edit),
             tooltip: 'Editar',
+          ),
+          PopupMenuButton<String>(
+            enabled: !deleting && !leaving,
+            onSelected: (_) => deleteAnimal(animal),
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'delete',
+                child: Text(
+                  'Eliminar animal',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -707,7 +822,8 @@ class _MoveAnimalScreenState extends ConsumerState<MoveAnimalScreen> {
     final animals = ref.watch(animalViewModelProvider).requireValue.animals;
     final paddocks = ref.watch(paddockViewModelProvider).requireValue;
 
-    final animal = animals.firstWhere((a) => a.id == widget.animalId);
+    final animal = animals.where((a) => a.id == widget.animalId).firstOrNull;
+    if (animal == null) return const _AnimalUnavailable();
 
     final uniquePaddocks = {
       for (final paddock in paddocks) paddock.id: paddock,
@@ -803,22 +919,36 @@ class _MoveAnimalScreenState extends ConsumerState<MoveAnimalScreen> {
                       );
                       return;
                     }
-                    await ref
-                        .read(animalViewModelProvider.notifier)
-                        .move(
-                          animal,
-                          safeDestination,
-                          date,
-                          plannedGrazingDays: plannedDays,
-                        );
+                    try {
+                      final movedCount = await ref
+                          .read(animalViewModelProvider.notifier)
+                          .move(
+                            animal,
+                            safeDestination,
+                            date,
+                            plannedGrazingDays: plannedDays,
+                          );
 
-                    if (context.mounted) {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('✓ Movimiento registrado'),
-                        ),
-                      );
+                      if (movedCount == 0) return;
+                      if (context.mounted &&
+                          ModalRoute.of(context)?.isCurrent == true) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('✓ Movimiento registrado'),
+                          ),
+                        );
+                      }
+                    } catch (_) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'No se pudo mover. El animal puede haber sido eliminado o la sesión cambió.',
+                            ),
+                          ),
+                        );
+                      }
                     }
                   },
             child: const Text('Confirmar movimiento'),
@@ -858,6 +988,7 @@ class _MoveAnimalBatchScreenState extends ConsumerState<MoveAnimalBatchScreen> {
     final movableAnimals = animalState.animals
         .where((animal) => animal.status == 'Activo')
         .toList();
+    selectedAnimalIds.retainAll(movableAnimals.map((a) => a.id));
     final visibleAnimals = movableAnimals.where((animal) {
       return sourcePaddockId == null || animal.paddockId == sourcePaddockId;
     }).toList();
@@ -960,9 +1091,10 @@ class _MoveAnimalBatchScreenState extends ConsumerState<MoveAnimalBatchScreen> {
                     setState(() {
                       sourcePaddockId = value;
                       selectedAnimalIds.removeWhere((animalId) {
-                        final animal = movableAnimals.firstWhere(
-                          (item) => item.id == animalId,
-                        );
+                        final animal = movableAnimals
+                            .where((item) => item.id == animalId)
+                            .firstOrNull;
+                        if (animal == null) return true;
 
                         return sourcePaddockId != null &&
                             animal.paddockId != sourcePaddockId;
@@ -1002,9 +1134,10 @@ class _MoveAnimalBatchScreenState extends ConsumerState<MoveAnimalBatchScreen> {
                     setState(() {
                       destinationPaddockId = value;
                       selectedAnimalIds.removeWhere((animalId) {
-                        final animal = movableAnimals.firstWhere(
-                          (item) => item.id == animalId,
-                        );
+                        final animal = movableAnimals
+                            .where((item) => item.id == animalId)
+                            .firstOrNull;
+                        if (animal == null) return true;
 
                         return animal.paddockId == destinationPaddockId;
                       });
@@ -1247,26 +1380,39 @@ class _MoveAnimalBatchScreenState extends ConsumerState<MoveAnimalBatchScreen> {
       return;
     }
 
-    final movedCount = await ref
-        .read(animalViewModelProvider.notifier)
-        .moveMany(
-          selectedAnimals,
-          destination,
-          date,
-          plannedGrazingDays: plannedDays,
-        );
+    try {
+      final movedCount = await ref
+          .read(animalViewModelProvider.notifier)
+          .moveMany(
+            selectedAnimals,
+            destination,
+            date,
+            plannedGrazingDays: plannedDays,
+          );
 
-    if (context.mounted) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            movedCount == 1
-                ? '✓ 1 animal movido'
-                : '✓ $movedCount animales movidos',
+      if (movedCount == 0) return;
+      if (context.mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              movedCount == 1
+                  ? '✓ 1 animal movido'
+                  : '✓ $movedCount animales movidos',
+            ),
           ),
-        ),
-      );
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No se pudo mover el lote. Actualiza los animales e intenta nuevamente.',
+            ),
+          ),
+        );
+      }
     }
   }
 }
@@ -1276,4 +1422,46 @@ bool _canReceiveAnimals(Paddock paddock, DateTime movementDate) {
     paddock,
     referenceDate: movementDate,
   ).canReceiveAnimals;
+}
+
+// Own route only: a disappearing detail must never pop an editor above it.
+class _AnimalUnavailable extends StatefulWidget {
+  const _AnimalUnavailable({this.autoClose = true});
+  final bool autoClose;
+  @override
+  State<_AnimalUnavailable> createState() => _AnimalUnavailableState();
+}
+
+class _AnimalUnavailableState extends State<_AnimalUnavailable> {
+  bool leaving = false;
+  void close() {
+    if (!mounted || leaving || ModalRoute.of(context)?.isCurrent != true) {
+      return;
+    }
+    if (!Navigator.canPop(context)) return;
+    leaving = true;
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.autoClose) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => close());
+    }
+    return Scaffold(
+      appBar: AppBar(title: const Text('Animal no disponible')),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Este animal ya no está disponible.'),
+            TextButton(
+              onPressed: close,
+              child: const Text('Volver a animales'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
