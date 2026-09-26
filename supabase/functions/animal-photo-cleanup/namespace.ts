@@ -19,7 +19,9 @@ export interface Namespace {
 export function deriveNamespace(
   job: Pick<CleanupJob, "userId" | "animalId">,
 ): Namespace | null {
-  if (!isCanonicalUuid(job.userId) || !isCanonicalUuid(job.animalId)) return null;
+  if (!isCanonicalUuid(job.userId) || !isCanonicalUuid(job.animalId)) {
+    return null;
+  }
   const folder = `${job.userId}/${job.animalId}`;
   return Object.freeze({ folder, prefix: `${folder}/` });
 }
@@ -30,7 +32,9 @@ export function pagePaths(
   entries: readonly StorageEntry[],
 ): readonly string[] | null {
   const namespace = deriveNamespace(job);
-  if (!namespace || !Array.isArray(entries) || entries.length > 100) return null;
+  if (!namespace || !Array.isArray(entries) || entries.length > 100) {
+    return null;
+  }
   const paths = new Set<string>();
   for (const entry of entries) {
     if (

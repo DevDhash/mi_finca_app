@@ -61,22 +61,30 @@ export class FakeStorage implements PhotoStorage {
   constructor(count = 0) {
     this.entries = Array.from({ length: count }, (_, n) => file(n + 100));
   }
-  async list(
+  list(
     folder: string,
     options: ListOptions,
   ): Promise<AdapterResult<readonly StorageEntry[]>> {
-    this.beforeList?.(this);
-    const value = [...this.entries].sort((a, b) => a.name.localeCompare(b.name))
-      .slice(options.offset, options.offset + options.limit);
-    this.lists.push({ folder, options, size: value.length });
-    return this.onList?.() ?? { ok: true, value };
+    return new Promise((resolve) => {
+      this.beforeList?.(this);
+      const value = [...this.entries].sort((a, b) =>
+        a.name.localeCompare(b.name)
+      )
+        .slice(options.offset, options.offset + options.limit);
+      this.lists.push({ folder, options, size: value.length });
+      resolve(this.onList?.() ?? { ok: true, value });
+    });
   }
-  async remove(paths: readonly string[]): Promise<AdapterResult<unknown>> {
-    this.removals.push([...paths]);
-    if (this.onRemove) return this.onRemove(paths);
-    const names = new Set(paths.slice(0, this.deleteLimit).map((p) => p.split("/").at(-1)));
-    this.entries = this.entries.filter((e) => !names.has(e.name));
-    // Deliberately return no deleted-object inventory.
-    return { ok: true, value: undefined };
+  remove(paths: readonly string[]): Promise<AdapterResult<unknown>> {
+    return new Promise((resolve) => {
+      this.removals.push([...paths]);
+      if (this.onRemove) return resolve(this.onRemove(paths));
+      const names = new Set(
+        paths.slice(0, this.deleteLimit).map((p) => p.split("/").at(-1)),
+      );
+      this.entries = this.entries.filter((e) => !names.has(e.name));
+      // Deliberately return no deleted-object inventory.
+      resolve({ ok: true, value: undefined });
+    });
   }
 }

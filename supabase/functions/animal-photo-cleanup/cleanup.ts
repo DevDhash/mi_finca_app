@@ -40,7 +40,10 @@ export async function cleanup(
   const job = Object.freeze({ ...inputJob });
   const namespace = deriveNamespace(job);
   if (!namespace || storage.bucket !== PHOTO_BUCKET) return INVALID;
-  if (!validJobMetadata(job) || !Number.isSafeInteger(maxBatches) || maxBatches < 1) {
+  if (
+    !validJobMetadata(job) || !Number.isSafeInteger(maxBatches) ||
+    maxBatches < 1
+  ) {
     return { outcome: "retry", errorCode: "internal_error" };
   }
   if (compareTerminal(job, ledger)) {
@@ -54,7 +57,9 @@ export async function cleanup(
     while (true) {
       if (!budget.canStartList()) return TIMEOUT;
       const page = await storage.list(namespace.folder, LIST_OPTIONS);
-      if (!page.ok) return { outcome: "retry", errorCode: classifyError(page.error) };
+      if (!page.ok) {
+        return { outcome: "retry", errorCode: classifyError(page.error) };
+      }
       if (!Array.isArray(page.value)) {
         return { outcome: "retry", errorCode: "internal_error" };
       }

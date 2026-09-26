@@ -21,15 +21,20 @@ export async function withDeadline<T>(
     }, Math.ceil(remaining));
   });
   const work = Promise.resolve().then(() => operation(controller.signal)).then(
-    (value): AdapterResult<T> => controller.signal.aborted || now() >= deadlineMs
-      ? { ok: false, error: { kind: "timeout" } }
-      : { ok: true, value },
+    (value): AdapterResult<T> =>
+      controller.signal.aborted || now() >= deadlineMs
+        ? { ok: false, error: { kind: "timeout" } }
+        : { ok: true, value },
     (): AdapterResult<T> => ({
-      ok: false, error: { kind: controller.signal.aborted ? "timeout" : "network" },
+      ok: false,
+      error: { kind: controller.signal.aborted ? "timeout" : "network" },
     }),
   );
-  try { return await Promise.race([work, expired]); }
-  finally { clearTimeout(timer); }
+  try {
+    return await Promise.race([work, expired]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Conservative wall-clock deadline: floor lease microseconds, reserve skew + ACK time.
@@ -44,12 +49,15 @@ export function leaseBudget(
   skewMs = 2000,
 ) {
   const lease = timestampMicros(leaseExpiresAt);
-  if (lease === null || !Number.isSafeInteger(invocationDeadlineMs) ||
+  if (
+    lease === null || !Number.isSafeInteger(invocationDeadlineMs) ||
     ![requestMs, finishReserveMs, skewMs].every(Number.isSafeInteger) ||
-    requestMs <= 0 || finishReserveMs <= 0 || skewMs < 0) {
+    requestMs <= 0 || finishReserveMs <= 0 || skewMs < 0
+  ) {
     throw new Error("INVALID_DEADLINE_CONFIG");
   }
-  const deadline = Math.min(Number(lease / 1000n), invocationDeadlineMs) - skewMs;
+  const deadline = Math.min(Number(lease / 1000n), invocationDeadlineMs) -
+    skewMs;
   const remaining = () => deadline - now();
   const budget: CleanupBudget = Object.freeze({
     canStartList: () => remaining() > requestMs + finishReserveMs,
@@ -59,7 +67,8 @@ export function leaseBudget(
   return Object.freeze({
     budget,
     remainingMs: remaining,
-    storageDeadline: () => Math.min(now() + requestMs, deadline - finishReserveMs),
+    storageDeadline: () =>
+      Math.min(now() + requestMs, deadline - finishReserveMs),
     finishDeadline: () => Math.min(now() + finishReserveMs, deadline),
   });
 }

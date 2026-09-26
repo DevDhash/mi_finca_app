@@ -12,7 +12,9 @@ function positiveSqlInteger(value: unknown): value is bigint {
  */
 export function timestampMicros(value: string): bigint | null {
   if (typeof value !== "string") return null;
-  const match = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?(Z|[+-]\d{2}:\d{2})(?![\s\S])/.exec(value);
+  const match =
+    /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?(Z|[+-]\d{2}:\d{2})(?![\s\S])/
+      .exec(value);
   if (!match) return null;
   const [, date, hour, minute, second, fraction = "", zone] = match;
   if (date.startsWith("0000") || +hour > 23 || +minute > 59 || +second > 59) {
@@ -51,7 +53,8 @@ export function compareTerminal(
   return ledger !== null && validJobMetadata(job) &&
       isCanonicalUuid(job.userId) && isCanonicalUuid(job.animalId) &&
       ledger.collection === "animals" && ledger.entityId === job.animalId &&
-      ledger.userId === job.userId && ledger.sequence === job.tombstoneSequence &&
+      ledger.userId === job.userId &&
+      ledger.sequence === job.tombstoneSequence &&
       ledger.operationId === job.operationId && deletedAt !== null &&
       timestampMicros(ledger.deletedAt) === deletedAt
     ? null

@@ -24,39 +24,50 @@ test("extension rejects punctuation and empty suffix", () => {
   for (const ext of ["", "jpg.png", "jp-g", "jpg_", "jpg "]) {
     equal(pagePaths(job, [file(100, ext)]), null);
   }
-
 });
 
-
-for (const name of [
-  `${uuid(100).toUpperCase()}.JPG`,
-  `${uuid(100).replace("aaaa", "AaAa")}.HeIc`,
-  `${uuid(100)}.${"a".repeat(17)}`,
-  `${uuid(100)}.${"Ab9".repeat(100)}`,
-  "00000000-0000-0000-0000-000000000000.0",
-  "ffffffff-ffff-ffff-ffff-ffffffffffff.AVIF",
-]) {
+for (
+  const name of [
+    `${uuid(100).toUpperCase()}.JPG`,
+    `${uuid(100).replace("aaaa", "AaAa")}.HeIc`,
+    `${uuid(100)}.${"a".repeat(17)}`,
+    `${uuid(100)}.${"Ab9".repeat(100)}`,
+    "00000000-0000-0000-0000-000000000000.0",
+    "ffffffff-ffff-ffff-ffff-ffffffffffff.AVIF",
+  ]
+) {
   test(`E1 filename shape accepted without normalization: ${name}`, () => {
     deepStrictEqual(pagePaths(job, [{ kind: "file", name }]), [
       `${job.userId}/${job.animalId}/${name}`,
     ]);
   });
 }
-for (const name of [
-  `${uuid(100)}.é`, `${uuid(100)}.１２`, `${uuid(100)}.jpg\r`,
-  `{${uuid(100)}}.jpg`, `${uuid(100).replaceAll("-", "")}.jpg`,
-  `${uuid(100)}.jpg/extra`, `${uuid(100)}.%2f`,
-]) {
+for (
+  const name of [
+    `${uuid(100)}.é`,
+    `${uuid(100)}.１２`,
+    `${uuid(100)}.jpg\r`,
+    `{${uuid(100)}}.jpg`,
+    `${uuid(100).replaceAll("-", "")}.jpg`,
+    `${uuid(100)}.jpg/extra`,
+    `${uuid(100)}.%2f`,
+  ]
+) {
   test(`E1 rejects filename outside exact ASCII grammar: ${JSON.stringify(name)}`, () => {
     equal(pagePaths(job, [{ kind: "file", name }]), null);
   });
 }
 test("E1 UUID format does not constrain version/variant bits", () => {
-  deepStrictEqual(deriveNamespace({
-    userId: "00000000-0000-0000-0000-000000000000",
-    animalId: "ffffffff-ffff-ffff-ffff-ffffffffffff",
-  }), {
-    folder: "00000000-0000-0000-0000-000000000000/ffffffff-ffff-ffff-ffff-ffffffffffff",
-    prefix: "00000000-0000-0000-0000-000000000000/ffffffff-ffff-ffff-ffff-ffffffffffff/",
-  });
+  deepStrictEqual(
+    deriveNamespace({
+      userId: "00000000-0000-0000-0000-000000000000",
+      animalId: "ffffffff-ffff-ffff-ffff-ffffffffffff",
+    }),
+    {
+      folder:
+        "00000000-0000-0000-0000-000000000000/ffffffff-ffff-ffff-ffff-ffffffffffff",
+      prefix:
+        "00000000-0000-0000-0000-000000000000/ffffffff-ffff-ffff-ffff-ffffffffffff/",
+    },
+  );
 });

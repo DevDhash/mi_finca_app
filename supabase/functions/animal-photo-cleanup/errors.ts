@@ -24,6 +24,8 @@ export function classifyError(error: NormalizedError): ErrorCode {
   if (error.status === 429) return "rate_limited";
   if (error.status === 401 || error.status === 403) return "permission_denied";
   if (error.status === 408 || error.status === 504) return "timeout";
-  if (error.status === 502 || error.status === 503) return "storage_unavailable";
+  if (error.status === 502 || error.status === 503) {
+    return "storage_unavailable";
+  }
   return "internal_error";
 }
