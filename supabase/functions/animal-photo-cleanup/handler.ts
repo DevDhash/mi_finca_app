@@ -18,6 +18,44 @@ function response(
     },
   });
 }
+/** Inspect chunks without accumulating payload. Bound both time and empty chunks. */
+async function hasEmptyBody(
+  request: Request,
+  timeoutMs: number,
+): Promise<boolean> {
+  if (request.body === null) return true;
+  let reader: ReadableStreamDefaultReader<Uint8Array>;
+  try {
+    reader = request.body.getReader();
+  } catch {
+    return false;
+  }
+  let ended = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), timeoutMs);
+  });
+  try {
+    // Empty chunks convey no bytes, but an unbounded sequence could exhaust CPU.
+    for (let reads = 0; reads < 16; reads++) {
+      const chunk = await Promise.race([reader.read(), timeout]);
+      if (chunk === null) return false;
+      if (chunk.done) {
+        ended = true;
+        return true;
+      }
+      if (chunk.value.byteLength > 0) return false;
+    }
+    return false;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+    // Do not wait for an untrusted source's cancellation promise.
+    if (!ended) void reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+}
 export function createHandler(env: Environment, deps: WorkerDependencies) {
   return async (request: Request): Promise<Response> => {
     if (request.method !== "POST") {
@@ -29,12 +67,10 @@ export function createHandler(env: Environment, deps: WorkerDependencies) {
       if (!await authenticate(request, config.secret)) {
         return response({ error: "unauthorized" }, 401);
       }
-      // No request body, query options or caller-selected identities. Do not read streams.
+      // Transport headers and stream existence do not prove payload presence.
       if (
-        new URL(request.url).search || request.body !== null ||
-        (request.headers.has("content-length") &&
-          request.headers.get("content-length") !== "0") ||
-        request.headers.has("transfer-encoding")
+        new URL(request.url).search ||
+        !await hasEmptyBody(request, config.requestMs)
       ) return response({ error: "unexpected_input" }, 400);
       const summary = await runWorker(config, deps);
       return response(

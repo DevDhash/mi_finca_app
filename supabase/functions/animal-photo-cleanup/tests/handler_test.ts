@@ -103,3 +103,153 @@ test("response and logs sanitize raw network exception", async () => {
   ok(!output.includes(syntheticKey));
   ok(!output.includes("fixture.invalid"));
 });
+
+function streamRequest(
+  body: ReadableStream<Uint8Array>,
+  extraHeaders: Record<string, string> = {},
+) {
+  const init: RequestInit & { duplex: "half" } = {
+    body,
+    duplex: "half",
+    headers: { apikey: syntheticKey, ...extraHeaders },
+  };
+  return request(init);
+}
+
+for (const length of [undefined, "0"]) {
+  test(`existing zero-byte stream accepted, Content-Length ${length}`, async () => {
+    const h = harness([json(0), json([])]);
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(0));
+        controller.close();
+      },
+    });
+    const r = await h.handler(
+      streamRequest(body, length ? { "content-length": length } : {}),
+    );
+    equal(r.status, 200);
+    equal(h.calls.length, 2);
+    equal(body.locked, false);
+  });
+}
+for (const body of [null, ""]) {
+  test(`empty body accepted: ${JSON.stringify(body)}`, async () => {
+    const h = harness([json(0), json([])]);
+    equal((await h.handler(request({ body }))).status, 200);
+    equal(h.calls.length, 2);
+  });
+}
+for (
+  const payload of ["x", "{}", "[]", '""', " \n\t", '{"a":1}', "field=value"]
+) {
+  test(`actual payload rejected: ${JSON.stringify(payload)}`, async () => {
+    const h = harness([]);
+    const r = await h.handler(request({ body: payload }));
+    equal(r.status, 400);
+    deepStrictEqual(await r.json(), { error: "unexpected_input" });
+    equal(h.calls.length, 0);
+  });
+}
+const transportHeaders: Record<string, string>[] = [
+  {},
+  { "content-length": "0" },
+  { "transfer-encoding": "chunked" },
+];
+for (const headers of transportHeaders) {
+  test(`stream byte rejected regardless of headers: ${JSON.stringify(headers)}`, async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array([1]));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    }, { highWaterMark: 0 });
+    const h = harness([]);
+    equal((await h.handler(streamRequest(body, headers))).status, 400);
+    equal(h.calls.length, 0);
+    equal(cancelled, true);
+    equal(body.locked, false);
+  });
+}
+test("stream read failure fails closed", async () => {
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      controller.error(new Error("synthetic body failure"));
+    },
+  }, { highWaterMark: 0 });
+  const h = harness([]);
+  const r = await h.handler(streamRequest(body));
+  equal(r.status, 400);
+  deepStrictEqual(await r.json(), { error: "unexpected_input" });
+  equal(h.calls.length, 0);
+  equal(body.locked, false);
+});
+test("large payload rejected after first chunk without draining source", async () => {
+  let pulls = 0, cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      pulls++;
+      controller.enqueue(new Uint8Array(1024 * 1024));
+    },
+    cancel() {
+      cancelled = true;
+    },
+  }, { highWaterMark: 0 });
+  const h = harness([]);
+  equal((await h.handler(streamRequest(body))).status, 400);
+  equal(pulls, 1);
+  equal(cancelled, true);
+  equal(body.locked, false);
+  equal(h.calls.length, 0);
+});
+test("stalled body times out even if source cancellation never resolves", async () => {
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    cancel() {
+      cancelled = true;
+      return new Promise<void>(() => {});
+    },
+  }, { highWaterMark: 0 });
+  const h = harness([], { ANIMAL_PHOTO_CLEANUP_REQUEST_MS: "100" });
+  equal((await h.handler(streamRequest(body))).status, 400);
+  equal(cancelled, true);
+  equal(body.locked, false);
+  equal(h.calls.length, 0);
+});
+test("endless empty chunks are bounded and cancelled", async () => {
+  let pulls = 0, cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      pulls++;
+      controller.enqueue(new Uint8Array(0));
+    },
+    cancel() {
+      cancelled = true;
+    },
+  }, { highWaterMark: 0 });
+  const h = harness([]);
+  equal((await h.handler(streamRequest(body))).status, 400);
+  ok(pulls <= 16);
+  equal(cancelled, true);
+  equal(h.calls.length, 0);
+});
+test("unauthenticated request does not read the body", async () => {
+  let pulls = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      pulls++;
+      controller.enqueue(new Uint8Array([1]));
+    },
+  }, { highWaterMark: 0 });
+  const h = harness([]);
+  equal(
+    (await h.handler(streamRequest(body, { apikey: "wrong" }))).status,
+    401,
+  );
+  equal(pulls, 0);
+  equal(h.calls.length, 0);
+  await body.cancel();
+});
