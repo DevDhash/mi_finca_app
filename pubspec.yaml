@@ -26,6 +26,7 @@ dependencies:
   drift_flutter: ^0.2.8
   sqlite3_flutter_libs: ^0.5.42
   supabase_flutter: ^2.15.3
+  timezone: ^0.10.1
 
 dev_dependencies:
   http: ^1.6.0

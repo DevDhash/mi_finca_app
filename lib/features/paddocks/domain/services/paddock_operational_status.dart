@@ -1,7 +1,17 @@
 import 'package:mi_finca_app/features/paddocks/domain/entities/paddock.dart';
+import 'package:timezone/data/latest.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
 
-DateTime calendarDate(DateTime value) =>
-    DateTime(value.year, value.month, value.day);
+final tz.Location _businessCalendar = () {
+  tzdata.initializeTimeZones();
+  return tz.getLocation('America/Lima');
+}();
+
+// UTC is only a date carrier: subtraction counts civil days, never DST hours.
+DateTime calendarDate(DateTime value) {
+  final lima = tz.TZDateTime.from(value, _businessCalendar);
+  return DateTime.utc(lima.year, lima.month, lima.day);
+}
 
 class PaddockOperationalStatus {
   const PaddockOperationalStatus._({
