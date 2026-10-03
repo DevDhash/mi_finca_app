@@ -675,6 +675,14 @@ void main() {
           ),
         );
       }
+      for (final id in ['a', 'b']) {
+        await db.markRemoteConfirmed('animals', id, 'owner');
+        await db.markRecordSynced('animals', id);
+      }
+      for (final id in ['p1', 'p2']) {
+        await db.markRemoteConfirmed('paddocks', id, 'owner');
+        await db.markRecordSynced('paddocks', id);
+      }
       final vm = await viewModel();
       await container!.read(paddockViewModelProvider.future);
       await repository.deleteAnimal(
@@ -713,7 +721,24 @@ void main() {
     () async {
       await local.save(deletionAnimal());
       await repository.save(deletionAnimal().copyWith(name: 'Editada'));
-      await MoveAnimal(repository)(deletionAnimal(), 'p2', deletionDate);
+      await db.markRemoteConfirmed('animals', 'a', 'owner');
+      await db.markRecordSynced('animals', 'a');
+      for (final id in ['p1', 'p2']) {
+        await db.putRecord(
+          'paddocks',
+          id,
+          {'id': id},
+          deletionDate,
+          pending: false,
+          verifiedRemoteOwner: 'owner',
+        );
+      }
+      await MoveAnimal(repository)(
+        deletionAnimal(),
+        'p2',
+        deletionDate,
+        plannedGrazingDays: 3,
+      );
       expect((await repository.getLocal()).single.name, 'Editada');
       expect((await local.getMovements()).single.fromPaddockId, 'p1');
       final current = (await repository.getLocal()).single;
@@ -798,6 +823,53 @@ void main() {
       expect(after.payload['_photoUpload'], before.payload['_photoUpload']);
       expect(storage.calls, 0);
       expect(remote.sent, isEmpty);
+    },
+  );
+  test(
+    'multi-animal MOVE queues same planned days without paddock writes',
+    () async {
+      for (final id in ['a', 'b']) {
+        await local.save(deletionAnimal(id: id));
+        await db.markRemoteConfirmed('animals', id, 'owner');
+        await db.markRecordSynced('animals', id);
+      }
+      for (final id in ['p1', 'p2']) {
+        await PaddockLocalDataSource(db).save(
+          Paddock(
+            id: id,
+            name: id,
+            areaHectares: 1,
+            status: id == 'p1' ? 'En uso' : 'Disponible',
+            createdAt: deletionDate,
+            updatedAt: deletionDate,
+          ),
+          pending: false,
+          verifiedRemoteOwner: 'owner',
+        );
+      }
+      final before = (await row('paddocks', 'p2')).payload;
+      final vm = await viewModel();
+      await container!.read(paddockViewModelProvider.future);
+      expect(
+        await vm.moveMany(
+          [deletionAnimal(), deletionAnimal(id: 'b')],
+          'p2',
+          deletionDate,
+          plannedGrazingDays: 3,
+        ),
+        2,
+      );
+      final commands = await db.animalMoveCommands('owner');
+      expect(commands.length, 2);
+      expect(commands.map((r) => r.payload['plannedGrazingDays']), [3, 3]);
+      expect(commands.map((r) => r.id).toSet().length, 2);
+      expect((await row('paddocks', 'p2')).payload, before);
+      expect(
+        (await db.readPendingRecords()).every(
+          (r) => r.collection == animalMoveCollection,
+        ),
+        true,
+      );
     },
   );
 }

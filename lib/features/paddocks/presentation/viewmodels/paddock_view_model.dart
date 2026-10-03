@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/features/paddocks/domain/value_objects/paddock_patch.dart';
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -36,79 +37,51 @@ class PaddockViewModel extends AsyncNotifier<List<Paddock>> {
     return ref.watch(paddockRepositoryProvider).getAll();
   }
 
+  /// Full snapshots are only for creation. Existing edits must carry intent.
   Future<void> save(Paddock paddock) async {
-    final items = [...state.requireValue];
-    final now = DateTime.now();
-
-    if (paddock.status == 'En uso') {
-      for (var i = 0; i < items.length; i++) {
-        final current = items[i];
-
-        if (current.id == paddock.id || current.status != 'En uso') continue;
-
-        final rested = Paddock(
-          id: current.id,
-          name: current.name,
-          areaHectares: current.areaHectares,
-          pastureType: current.pastureType,
-          requiredRestDays: current.requiredRestDays,
-          rotationOrder: current.rotationOrder,
-          status: 'Descansando',
-          lastGrazingEndDate: now,
-          createdAt: current.createdAt,
-          updatedAt: now,
-        );
-
-        await ref.read(paddockRepositoryProvider).save(rested);
-        items[i] = rested;
-      }
+    if (state.requireValue.any((p) => p.id == paddock.id)) {
+      throw StateError('Usa un patch explícito para editar el potrero.');
     }
-
     await ref.read(paddockRepositoryProvider).save(paddock);
-
-    final index = items.indexWhere((item) => item.id == paddock.id);
-
-    if (index < 0) {
-      items.insert(0, paddock);
-    } else {
-      items[index] = paddock;
-    }
-
-    state = AsyncData(items);
-
+    await reload();
     unawaited(ref.read(syncViewModelProvider.notifier).syncPendingIfOnline());
   }
 
-  Future<void> updateRotationOrder(List<String> orderedPaddockIds) async {
-    final items = [...state.requireValue];
-    final now = DateTime.now();
-    final updatedById = <String, Paddock>{};
+  Future<void> deletePaddock(String id) async {
+    final database = ref.read(databaseProvider);
+    final owner = await database.localOwner();
+    if (owner == null) throw StateError('Sesión requerida');
+    await database.markDeleted('paddocks', id, owner);
+    await reload();
+    if (ref.mounted) {
+      unawaited(ref.read(syncViewModelProvider.notifier).syncPendingIfOnline());
+    }
+  }
 
-    for (var i = 0; i < orderedPaddockIds.length; i++) {
-      final id = orderedPaddockIds[i];
-      Paddock? paddock;
-      for (final item in items) {
-        if (item.id == id) {
-          paddock = item;
-          break;
-        }
+  Future<void> edit(String id, PaddockPatch patch) async {
+    final repository = ref.read(paddockRepositoryProvider);
+    if (repository is! PaddockEditRepository) {
+      throw StateError('Patches no soportados');
+    }
+    await (repository as PaddockEditRepository).edit(id, patch);
+    await reload();
+    unawaited(ref.read(syncViewModelProvider.notifier).syncPendingIfOnline());
+  }
+
+  Future<void> updateRotationOrder(List<String> ids) async {
+    final repository = ref.read(paddockRepositoryProvider);
+    if (repository is! PaddockEditRepository) {
+      throw StateError('Patches no soportados');
+    }
+    await ref.read(databaseProvider).runInTransaction(() async {
+      for (var i = 0; i < ids.length; i++) {
+        await (repository as PaddockEditRepository).edit(
+          ids[i],
+          PaddockPatch({PaddockField.rotationOrder: i + 1}),
+        );
       }
-
-      if (paddock == null) continue;
-
-      updatedById[id] = paddock.copyWith(rotationOrder: i + 1, updatedAt: now);
-    }
-
-    final updatedItems = items
-        .map((item) => updatedById[item.id] ?? item)
-        .toList();
-
-    state = AsyncData(updatedItems);
-
-    for (final paddock in updatedById.values) {
-      await ref.read(paddockRepositoryProvider).save(paddock);
-    }
-
+    });
+    await reload();
     unawaited(ref.read(syncViewModelProvider.notifier).syncPendingIfOnline());
   }
 

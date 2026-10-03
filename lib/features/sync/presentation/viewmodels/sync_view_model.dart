@@ -122,7 +122,7 @@ class SyncViewModel extends AsyncNotifier<SyncState> {
   }
 
   Future<void> syncNow() async {
-    await _syncPendingChanges(state.requireValue);
+    await _syncPendingChanges(state.requireValue, force: true);
     if (!state.requireValue.isOnline) return;
     final repository = ref.read(syncRepositoryProvider);
     if (repository is TombstoneSyncRepository) {
@@ -152,9 +152,12 @@ class SyncViewModel extends AsyncNotifier<SyncState> {
     await _syncPendingChanges(refreshed);
   }
 
-  Future<void> _syncPendingChanges(SyncState value) async {
+  Future<void> _syncPendingChanges(
+    SyncState value, {
+    bool force = false,
+  }) async {
     if (!value.isOnline ||
-        value.pendingChanges == 0 ||
+        (!force && value.pendingChanges == 0) ||
         state.value?.isSyncing == true) {
       return;
     }
@@ -177,6 +180,9 @@ class SyncViewModel extends AsyncNotifier<SyncState> {
         );
         if (ref.exists(animalViewModelProvider)) {
           await ref.read(animalViewModelProvider.notifier).reloadLocal();
+        }
+        if (ref.mounted && ref.exists(paddockViewModelProvider)) {
+          await ref.read(paddockViewModelProvider.notifier).reload();
         }
       }
     }

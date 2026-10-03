@@ -29,7 +29,12 @@ class AnimalPhotoSync {
   }
 
   Future<void> discoverLocalPhotos() => _database.runInTransaction(() async {
+    final pendingIds = {
+      for (final r in await _database.readPendingRecords())
+        if (r.collection == 'animals') r.id,
+    };
     for (final payload in await _database.readRecords('animals')) {
+      if (payload['_animalConflict'] != null) continue;
       final localPath = AnimalPhotoUpload.localPath(payload);
       // A remote-only reference or a future downloaded cache is not an upload.
       if (localPath == null ||
@@ -37,19 +42,32 @@ class AnimalPhotoSync {
           AnimalPhotoUpload.read(payload) != null) {
         continue;
       }
-      await _database.putRecord(
+      final current = (await _database.readRecord(
         'animals',
         payload['id']! as String,
-        {
-          ...payload,
-          AnimalPhotoUpload.key: AnimalPhotoUpload.create(
-            localPath,
-            SyncMetadata.owner(payload),
-          ),
-          'syncStatus': 'pending',
+      ))!;
+      final kind = SyncMetadata.read(payload)['writeKind'];
+      if (pendingIds.contains(current.id) &&
+          !['create', 'photo'].contains(kind)) {
+        continue;
+      }
+      // A synced row only recovers a photo reference; never a full entity edit.
+      final nextKind = pendingIds.contains(current.id) && kind == 'create'
+          ? 'create'
+          : 'photo';
+      await _database.replaceRecordIfUnchanged(current, {
+        ...payload,
+        AnimalPhotoUpload.key: AnimalPhotoUpload.create(
+          localPath,
+          SyncMetadata.owner(payload),
+        ),
+        '_animalWriteKind': nextKind,
+        '_sync': {
+          ...SyncMetadata.read(payload),
+          'writeKind': nextKind,
+          'revision': current.revision + 1,
         },
-        DateTime.parse(payload['updatedAt']! as String),
-      );
+      }, pending: true);
     }
   });
 
@@ -58,6 +76,13 @@ class AnimalPhotoSync {
     Future<void> Function(PendingRecord) publish,
   ) async {
     if (initial.isDeleted) return false;
+    if (![
+      'create',
+      'photo',
+    ].contains(SyncMetadata.read(initial.payload)['writeKind'])) {
+      await _database.quarantineLegacyAnimal(initial);
+      return false;
+    }
     final claimed = await _database.beginRemotePublish(initial);
     if (claimed == null) return false;
     final latest = await _database.readRecord(
@@ -187,7 +212,21 @@ class AnimalPhotoSync {
         }
       }
       await requireOwner();
-      await publish(record);
+      final publication =
+          SyncMetadata.read(record.payload)['writeKind'] == 'photo'
+          ? PendingRecord(
+              collection: 'animals',
+              id: record.id,
+              updatedAt: record.updatedAt,
+              payload: {
+                'id': record.id,
+                'remotePhotoPath': record.payload['remotePhotoPath'],
+                '_sync': SyncMetadata.read(record.payload),
+                AnimalPhotoUpload.key: job,
+              },
+            )
+          : record;
+      await publish(publication);
       await requireOwner();
       await confirmPresence();
       return _database.replaceRecordIfUnchanged(record, {

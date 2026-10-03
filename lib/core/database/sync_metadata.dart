@@ -1,5 +1,14 @@
 import 'package:uuid/uuid.dart';
 
+enum DeletionState {
+  active,
+  pending,
+  conflict,
+  confirmed,
+  localCancelled,
+  legacyUnknown,
+}
+
 enum RemotePresence { localOnly, unknown, confirmed }
 
 /// Internal protocol. Never serialized to a domain table by its upsert writer.
@@ -20,6 +29,24 @@ abstract final class SyncMetadata {
 
   static bool isDeleted(Map<String, Object?> payload) =>
       read(payload)['tombstone'] == true;
+
+  /// ACK evidence wins over any lifecycle flag, including legacy records.
+  static DeletionState deletionState(Map<String, Object?> payload) {
+    final meta = read(payload);
+    if (meta['tombstone'] != true) return DeletionState.active;
+    if (meta['deletedAt'] != null && meta['remoteOperationId'] != null) {
+      return DeletionState.confirmed;
+    }
+    if (meta['localCancellation'] == true && meta['operation'] == 'cancel') {
+      return DeletionState.localCancelled;
+    }
+    if (meta['deletionState'] == 'conflict') return DeletionState.conflict;
+    if (meta['deletionState'] == 'pending') return DeletionState.pending;
+    // Legacy unknown tombstones stay protected. Pending legacy operations
+    // are classified with the SQL pending flag by the database, never guessed.
+    return DeletionState.legacyUnknown;
+  }
+
   static String? owner(Map<String, Object?> payload) =>
       read(payload)['ownerId'] as String?;
 

@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/features/animals/domain/value_objects/animal_patch.dart';
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,7 +10,6 @@ import 'package:mi_finca_app/features/animals/domain/entities/animal.dart';
 import 'package:mi_finca_app/features/animals/domain/entities/movement.dart';
 import 'package:mi_finca_app/features/animals/domain/repositories/animal_repository.dart';
 import 'package:mi_finca_app/features/animals/domain/usecases/move_animal.dart';
-import 'package:mi_finca_app/features/paddocks/domain/entities/paddock.dart';
 import 'package:mi_finca_app/features/paddocks/domain/services/paddock_operational_status.dart';
 import 'package:mi_finca_app/features/paddocks/presentation/viewmodels/paddock_view_model.dart';
 import 'package:mi_finca_app/features/sync/presentation/viewmodels/sync_view_model.dart';
@@ -116,6 +116,27 @@ class AnimalViewModel extends AsyncNotifier<AnimalState> {
     unawaited(_requestSync());
   }
 
+  Future<void> edit(
+    String id,
+    AnimalPatch patch, {
+    String? selectedPhoto,
+  }) async {
+    final repo = ref.read(animalRepositoryProvider);
+    if (repo is! AnimalEditRepository) {
+      throw StateError('Explicit animal edits unavailable');
+    }
+    try {
+      await (repo as AnimalEditRepository).editAnimal(
+        id,
+        patch,
+        selectedPhoto: selectedPhoto,
+      );
+    } finally {
+      if (ref.mounted) await reloadLocal();
+    }
+    if (ref.mounted) unawaited(_requestSync());
+  }
+
   Future<int> move(
     Animal animal,
     String destinationId,
@@ -137,7 +158,6 @@ class AnimalViewModel extends AsyncNotifier<AnimalState> {
     int? plannedGrazingDays,
   }) async {
     final results = <({Animal animal, Movement movement})>[];
-    var updatedPaddocks = <Paddock>[];
     await ref.read(databaseProvider).runInTransaction(() async {
       final currentAnimals = await ref
           .read(animalRepositoryProvider)
@@ -172,43 +192,15 @@ class AnimalViewModel extends AsyncNotifier<AnimalState> {
       }
 
       final moveAnimal = ref.read(moveAnimalProvider);
-      final movedIds = movableAnimals.map((animal) => animal.id).toSet();
-      final finalAnimals = currentAnimals
-          .map(
-            (animal) => movedIds.contains(animal.id)
-                ? animal.copyWith(paddockId: destinationId)
-                : animal,
-          )
-          .toList();
-      final affectedOriginIds = movableAnimals
-          .map((animal) => animal.paddockId)
-          .whereType<String>()
-          .where((id) => id != destinationId)
-          .toSet();
-      updatedPaddocks = <Paddock>[
-        for (final paddock in paddocks)
-          if (affectedOriginIds.contains(paddock.id))
-            _updatedOriginPaddock(
-              paddock,
-              hasAnimals: finalAnimals.any(
-                (animal) => animal.paddockId == paddock.id,
-              ),
-              movementDate: date,
-            ),
-        _updatedDestinationPaddock(
-          destination,
-          wasEmpty: destinationWasEmpty,
-          movementDate: date,
-          plannedGrazingDays: plannedGrazingDays,
-        ),
-      ];
-
       for (final animal in movableAnimals) {
-        results.add(await moveAnimal(animal, destinationId, date));
-      }
-      final paddockRepository = ref.read(paddockRepositoryProvider);
-      for (final paddock in updatedPaddocks) {
-        await paddockRepository.save(paddock);
+        results.add(
+          await moveAnimal(
+            animal,
+            destinationId,
+            date,
+            plannedGrazingDays: plannedGrazingDays,
+          ),
+        );
       }
     });
 
@@ -223,9 +215,6 @@ class AnimalViewModel extends AsyncNotifier<AnimalState> {
         .getMovements();
     if (!ref.mounted) return results.length;
     state = AsyncData(state.requireValue.copyWith(movements: movements));
-    ref
-        .read(paddockViewModelProvider.notifier)
-        .applyPersistedMovementUpdates(updatedPaddocks);
 
     unawaited(_requestSync());
 
@@ -251,51 +240,4 @@ class AnimalViewModel extends AsyncNotifier<AnimalState> {
     );
     await reloadLocal();
   }
-}
-
-Paddock _updatedOriginPaddock(
-  Paddock paddock, {
-  required bool hasAnimals,
-  required DateTime movementDate,
-}) {
-  if (hasAnimals) {
-    return paddock.copyWith(status: 'En uso', updatedAt: DateTime.now());
-  }
-
-  return Paddock(
-    id: paddock.id,
-    name: paddock.name,
-    areaHectares: paddock.areaHectares,
-    pastureType: paddock.pastureType,
-    requiredRestDays: paddock.requiredRestDays,
-    rotationOrder: paddock.rotationOrder,
-    status: 'Descansando',
-    lastGrazingEndDate: movementDate,
-    createdAt: paddock.createdAt,
-    updatedAt: DateTime.now(),
-  );
-}
-
-Paddock _updatedDestinationPaddock(
-  Paddock paddock, {
-  required bool wasEmpty,
-  required DateTime movementDate,
-  required int? plannedGrazingDays,
-}) {
-  return Paddock(
-    id: paddock.id,
-    name: paddock.name,
-    areaHectares: paddock.areaHectares,
-    pastureType: paddock.pastureType,
-    requiredRestDays: paddock.requiredRestDays,
-    rotationOrder: paddock.rotationOrder,
-    grazingStartDate: wasEmpty ? movementDate : paddock.grazingStartDate,
-    plannedGrazingDays: wasEmpty
-        ? plannedGrazingDays
-        : paddock.plannedGrazingDays,
-    status: 'En uso',
-    lastGrazingEndDate: null,
-    createdAt: paddock.createdAt,
-    updatedAt: DateTime.now(),
-  );
 }

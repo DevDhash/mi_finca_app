@@ -1,10 +1,12 @@
+import 'package:mi_finca_app/features/paddocks/domain/value_objects/paddock_patch.dart';
 import 'package:mi_finca_app/core/domain/sync_status.dart';
 import 'package:mi_finca_app/features/paddocks/data/datasources/paddock_local_datasource.dart';
 import 'package:mi_finca_app/features/paddocks/data/datasources/paddock_remote_datasource.dart';
 import 'package:mi_finca_app/features/paddocks/domain/entities/paddock.dart';
 import 'package:mi_finca_app/features/paddocks/domain/repositories/paddock_repository.dart';
 
-class PaddockRepositoryImpl implements PaddockRepository {
+class PaddockRepositoryImpl
+    implements PaddockRepository, PaddockEditRepository {
   const PaddockRepositoryImpl({
     required PaddockLocalDataSource local,
     required PaddockRemoteDataSource remote,
@@ -38,6 +40,9 @@ class PaddockRepositoryImpl implements PaddockRepository {
       return localItems;
     }
   }
+
+  @override
+  Future<void> edit(String id, PaddockPatch patch) => _local.edit(id, patch);
 
   @override
   Future<void> save(Paddock paddock) async {

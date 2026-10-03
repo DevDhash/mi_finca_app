@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/features/animals/domain/value_objects/animal_patch.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -13,7 +14,7 @@ import 'package:mi_finca_app/features/animals/data/models/animal_photo_upload.da
 import 'package:mi_finca_app/features/animals/data/repositories/animal_repository_impl.dart';
 import 'package:mi_finca_app/features/animals/data/services/animal_photo_sync.dart';
 import 'package:mi_finca_app/features/animals/domain/entities/animal.dart';
-import 'package:mi_finca_app/features/animals/domain/usecases/move_animal.dart';
+import 'package:mi_finca_app/features/animals/domain/entities/movement.dart';
 import 'package:mi_finca_app/features/sync/data/datasources/sync_local_datasource.dart';
 import 'package:mi_finca_app/features/sync/data/datasources/sync_remote_datasource.dart';
 import 'package:mi_finca_app/features/sync/data/repositories/sync_repository_impl.dart';
@@ -418,7 +419,7 @@ void main() {
     },
   );
   test(
-    'confirmed parent with pending failed edit still permits historical child',
+    'confirmed parent with quarantined legacy edit still permits historical child',
     () async {
       await family();
       await sync.pushPendingChanges();
@@ -427,7 +428,11 @@ void main() {
       remote.fail.add('animals/a');
       await sync.pushPendingChanges();
       expect(remote.sent, contains('movements/m'));
-      expect(await db.pendingCount(), 1);
+      expect(await db.pendingCount(), 0);
+      expect(
+        (await row()).payload['_animalConflict'],
+        'LEGACY_LOCATION_AMBIGUOUS',
+      );
     },
   );
   test(
@@ -494,26 +499,45 @@ void main() {
     expect((await row()).remotePresence, RemotePresence.unknown);
   });
   test(
-    'original scenario: real move usecase multiple offline moves and restart',
+    'legacy offline moves remain preserved but cannot publish ambiguous location',
     () async {
       await family();
-      final mover = MoveAnimal(repository);
-      final first = await mover(
-        animal(paddock: 'p1'),
-        'p2',
-        DateTime.utc(2000),
+      final first = animal(paddock: 'p2');
+      await repository.saveMove(
+        first,
+        Movement(
+          id: 'old1',
+          animalId: 'a',
+          fromPaddockId: null,
+          toPaddockId: 'p2',
+          date: DateTime.utc(2000),
+        ),
       );
-      await mover(first.animal, 'p1', DateTime.utc(2001));
+      await repository.saveMove(
+        animal(paddock: 'p1'),
+        Movement(
+          id: 'old2',
+          animalId: 'a',
+          fromPaddockId: 'p2',
+          toPaddockId: 'p1',
+          date: DateTime.utc(2001),
+        ),
+      );
       await db.close();
       connect();
       await sync.pushPendingChanges();
-      final animalIndex = remote.sent.indexOf('animals/a');
-      final moves = remote.sent.where((e) => e.startsWith('movements/'));
-      expect(moves, hasLength(2));
-      for (final move in moves) {
-        expect(remote.sent.indexOf(move), greaterThan(animalIndex));
-      }
-      expect(await db.pendingCount(), 0);
+      expect(
+        remote.sent.where(
+          (e) => e == 'animals/a' || e.startsWith('movements/'),
+        ),
+        isEmpty,
+      );
+      expect(
+        (await row()).payload['_animalConflict'],
+        'LEGACY_LOCATION_AMBIGUOUS',
+      );
+      expect(await db.readRecords('movements'), hasLength(2));
+      expect(await db.pendingCount(), 2);
     },
   );
   test(
@@ -522,7 +546,7 @@ void main() {
       final file = File('${directory.path}/photo.png');
       await file.writeAsBytes([137, 80, 78, 71, 13, 10, 26, 10, 1]);
       await family();
-      await local.save(animal(photo: file.path));
+      await local.edit('a', AnimalPatch({}), selectedPhoto: file.path);
       await movement('m');
       storage.onUpload = () async {
         expect((await row()).remotePresence, RemotePresence.unknown);

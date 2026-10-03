@@ -1,3 +1,5 @@
+import 'package:mi_finca_app/features/animals/domain/value_objects/animal_move_command.dart';
+import 'package:mi_finca_app/features/animals/domain/value_objects/animal_patch.dart';
 import 'package:mi_finca_app/core/database/app_database.dart';
 import 'package:mi_finca_app/features/animals/data/datasources/animal_local_datasource.dart';
 import 'package:mi_finca_app/features/animals/data/datasources/animal_remote_datasource.dart';
@@ -5,7 +7,8 @@ import 'package:mi_finca_app/features/animals/domain/entities/animal.dart';
 import 'package:mi_finca_app/features/animals/domain/entities/movement.dart';
 import 'package:mi_finca_app/features/animals/domain/repositories/animal_repository.dart';
 
-class AnimalRepositoryImpl implements AnimalRepository {
+class AnimalRepositoryImpl
+    implements AnimalRepository, AnimalEditRepository, AnimalMoveRepository {
   const AnimalRepositoryImpl({
     required AnimalLocalDataSource local,
     required AnimalRemoteDataSource remote,
@@ -146,6 +149,34 @@ class AnimalRepositoryImpl implements AnimalRepository {
     } catch (_) {
       return localItems;
     }
+  }
+
+  @override
+  Future<void> editAnimal(
+    String id,
+    AnimalPatch patch, {
+    String? selectedPhoto,
+  }) => _local.edit(id, patch, selectedPhoto: selectedPhoto);
+
+  @override
+  Future<void> saveAtomicMovement(
+    Movement movement, {
+    int? plannedGrazingDays,
+  }) async {
+    final owner = await _local.owner();
+    if (owner == null) throw StateError('Session required for MOVE');
+    await _local.saveAtomicMove(
+      AnimalMoveCommand(
+        movementId: movement.id,
+        ownerId: owner,
+        animalId: movement.animalId,
+        fromPaddockId: movement.fromPaddockId,
+        toPaddockId: movement.toPaddockId,
+        movedAt: movement.date,
+        plannedGrazingDays: plannedGrazingDays,
+      ),
+      movement,
+    );
   }
 
   @override

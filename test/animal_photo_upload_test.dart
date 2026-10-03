@@ -1,3 +1,5 @@
+import 'package:mi_finca_app/core/database/sync_metadata.dart';
+import 'package:mi_finca_app/features/animals/domain/value_objects/animal_patch.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -251,7 +253,7 @@ void main() {
       await entered.future;
       final next = File('${directory.path}/next.png')
         ..writeAsBytesSync([137, 80, 78, 71, 13, 10, 26, 10, 4, 5]);
-      await local.save(animal(path: next.path));
+      await local.edit('animal', AnimalPatch({}), selectedPhoto: next.path);
       final newVersion = (await job())['version'];
       release.complete();
       await active;
@@ -273,10 +275,13 @@ void main() {
       await local.save(staleAnimal);
       remote.beforePush = (_) async {
         remote.beforePush = null;
-        await local.save(staleAnimal.copyWith(code: 'A-2'));
+        await local.edit(
+          staleAnimal.id,
+          AnimalPatch({AnimalField.code: 'A-2'}),
+        );
       };
       await sync.pushPendingChanges();
-      expect(await sync.pendingCount(), 1);
+      expect(await sync.pendingCount(), 2);
       expect((await saved()).payload['code'], 'A-2');
       expect((await saved()).payload['remotePhotoPath'], isNotNull);
       await sync.pushPendingChanges();
@@ -286,6 +291,25 @@ void main() {
     },
   );
 
+  test(
+    'existing animal photo retries after restart publish only reference',
+    () async {
+      await local.save(animal());
+      await sync.pushPendingChanges();
+      remote.payloads.clear();
+      await local.edit('animal', AnimalPatch({}), selectedPhoto: photo.path);
+      remote.fail = true;
+      await sync.pushPendingChanges();
+      final target = (await job())['target'];
+      expect((await job())['status'], 'uploaded');
+      await database.close();
+      connect();
+      remote.fail = false;
+      await sync.pushPendingChanges();
+      expect(remote.payloads.single, {'remote_photo_path': target});
+      expect(await sync.pendingCount(), 0);
+    },
+  );
   test('simultaneous sync requests share one worker', () async {
     await local.save(animal());
     await Future.wait([sync.pushPendingChanges(), sync.pushPendingChanges()]);
@@ -420,7 +444,29 @@ class FakeStorage implements AnimalPhotoStorage {
   }
 }
 
-class FakeRemote implements SyncRemoteDataSource {
+class FakeRemote implements AnimalPatchRemoteDataSource {
+  @override
+  String? get currentUserId => 'user';
+  @override
+  Future<bool> verifyLegacyOwner(PendingRecord record, String ownerId) async =>
+      false;
+  @override
+  Future<List<RemoteTombstone>> fetchTombstones(String ownerId) async => [];
+  @override
+  Future<RemoteTombstone> softDelete(PendingRecord record) async =>
+      throw UnimplementedError();
+  @override
+  Future<String?> animalVersion(String id, String owner) async => 'v1';
+  @override
+  Future<void> pushAnimalPatch(PendingRecord command) async {
+    if (fail) throw const SocketException('publication failed');
+    payloads.add(
+      AnimalPatch.fromLocal(
+        Map<String, Object?>.from(command.payload['fields'] as Map),
+      ).remoteValues,
+    );
+  }
+
   bool fail = false;
   final payloads = <Map<String, Object?>>[];
   final collections = <String>[];
@@ -433,7 +479,9 @@ class FakeRemote implements SyncRemoteDataSource {
     collections.add(record.collection);
     payloads.add(
       record.collection == 'animals'
-          ? AnimalRemotePayload.fromLocal(record.payload, 'user')
+          ? SyncMetadata.read(record.payload)['writeKind'] == 'photo'
+                ? {'remote_photo_path': record.payload['remotePhotoPath']}
+                : AnimalRemotePayload.fromLocal(record.payload, 'user')
           : record.payload,
     );
   }

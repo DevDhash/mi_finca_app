@@ -1,5 +1,3 @@
-import 'package:mi_finca_app/features/animals/data/models/animal_model.dart';
-import 'package:mi_finca_app/features/animals/data/models/animal_remote_payload.dart';
 import 'package:mi_finca_app/core/domain/sync_status.dart';
 import 'package:mi_finca_app/features/animals/domain/entities/animal.dart';
 import 'package:mi_finca_app/features/animals/domain/entities/movement.dart';
@@ -24,37 +22,14 @@ class AnimalRemoteDataSource {
     return currentUserId == owner && row != null;
   }
 
+  /// Full snapshots do not carry evidence of CREATE or edit intent.
   Future<void> upsertAnimal(Animal animal) async {
-    final user = _client.auth.currentUser;
-
-    if (user == null) {
-      throw const AuthException('No hay usuario autenticado.');
-    }
-
-    await _client
-        .from('animals')
-        .upsert(
-          AnimalRemotePayload.fromLocal(AnimalModel.toJson(animal), user.id),
-        );
+    throw StateError('Use durable CREATE or explicit animal patch');
   }
 
+  /// Retained API boundary; current movements must use sync_move_animal.
   Future<void> upsertMovement(Movement movement) async {
-    final user = _client.auth.currentUser;
-
-    if (user == null) {
-      throw const AuthException('No hay usuario autenticado.');
-    }
-
-    await _client.from('animal_movements').upsert({
-      'id': movement.id,
-      'user_id': user.id,
-      'animal_id': movement.animalId,
-      'from_paddock_id': movement.fromPaddockId,
-      'to_paddock_id': movement.toPaddockId,
-      'moved_at': movement.date.toIso8601String(),
-      'created_at': movement.date.toIso8601String(),
-      'updated_at': movement.date.toIso8601String(),
-    });
+    throw StateError('Use durable atomic MOVE');
   }
 
   Future<List<Animal>> getAnimals() async {

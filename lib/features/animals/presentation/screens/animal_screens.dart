@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/features/animals/domain/value_objects/animal_patch.dart';
 import 'package:mi_finca_app/features/animals/presentation/viewmodels/animal_photo_provider.dart';
 import 'dart:io';
 import 'package:mi_finca_app/features/animals/domain/repositories/animal_repository.dart';
@@ -9,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mi_finca_app/app/theme/app_theme.dart';
 import 'package:mi_finca_app/core/widgets/common_widgets.dart';
 import 'package:mi_finca_app/features/animals/domain/entities/animal.dart';
+import 'package:mi_finca_app/features/animals/domain/entities/animal_location_move_intent.dart';
 import 'package:mi_finca_app/features/animals/presentation/viewmodels/animal_view_model.dart';
 import 'package:mi_finca_app/features/paddocks/domain/entities/paddock.dart';
 import 'package:mi_finca_app/features/paddocks/domain/services/paddock_operational_status.dart';
@@ -143,7 +145,9 @@ class _AnimalListScreenState extends ConsumerState<AnimalListScreen> {
                       child: FilterChip(
                         label: Text(v),
                         selected: type == v,
-                        onSelected: (_) => setState(() => type = v),
+                        onSelected: (_) => setState(() {
+                          type = v;
+                        }),
                       ),
                     ),
                   )
@@ -214,7 +218,11 @@ class AnimalListCard extends StatelessWidget {
         animal.displayName,
         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
       ),
-      subtitle: Text('${animal.code} · ${paddockName ?? 'Sin potrero'}'),
+      subtitle: Text(
+        animal.moveConflict
+            ? '${animal.code} · Movimiento en conflicto; ubicación sin confirmar'
+            : '${animal.code} · ${paddockName ?? 'Sin potrero'}',
+      ),
       trailing: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [StatusChip(animal.status)],
@@ -248,6 +256,9 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
   String type = 'Vaca';
   String sex = 'Hembra';
   String? paddockId;
+  AnimalLocationMoveIntent? locationIntent;
+  final touched = <AnimalField>{};
+  bool photoTouched = false;
   String? localPhotoPath;
   DateTime? birthDate;
   @override
@@ -293,7 +304,12 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
       '${const Uuid().v4()}${path.extension(image.path)}',
     );
     await File(image.path).copy(target);
-    if (mounted) setState(() => localPhotoPath = target);
+    if (mounted) {
+      setState(() {
+        localPhotoPath = target;
+        photoTouched = true;
+      });
+    }
   }
 
   Future<void> save() async {
@@ -323,12 +339,44 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
     );
     setState(() => saving = true);
     try {
-      await ref.read(animalViewModelProvider.notifier).save(animal);
+      await saveAnimalFormWithoutMove(
+        locationIntent: locationIntent,
+        persist: () {
+          final vm = ref.read(animalViewModelProvider.notifier);
+          if (old == null) return vm.save(animal);
+          final values = <AnimalField, Object?>{
+            AnimalField.code: animal.code,
+            AnimalField.name: animal.name,
+            AnimalField.type: animal.type,
+            AnimalField.breed: animal.breed,
+            AnimalField.sex: animal.sex,
+            AnimalField.birthDate: animal.birthDate,
+            AnimalField.weight: animal.weight,
+            AnimalField.notes: animal.notes,
+          };
+          return vm.edit(
+            old.id,
+            AnimalPatch({for (final f in touched) f: values[f]}),
+            selectedPhoto: photoTouched ? localPhotoPath : null,
+          );
+        },
+      );
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('✓ Animal guardado')));
+      }
+    } on AnimalLocationMoveRequired {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No se guardaron los cambios. El cambio de potrero requiere '
+              'un movimiento coordinado, todavía no disponible en este formulario.',
+            ),
+          ),
+        );
       }
     } catch (_) {
       if (mounted) {
@@ -442,6 +490,7 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
               const SizedBox(height: 20),
               TextFormField(
                 controller: code,
+                onChanged: (_) => touched.add(AnimalField.code),
                 decoration: const InputDecoration(
                   labelText: 'Nombre o código *',
                 ),
@@ -452,6 +501,7 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
               const SizedBox(height: 14),
               TextFormField(
                 controller: name,
+                onChanged: (_) => touched.add(AnimalField.name),
                 decoration: const InputDecoration(labelText: 'Nombre opcional'),
               ),
               const SizedBox(height: 14),
@@ -463,7 +513,10 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
                       (v) => ChoiceChip(
                         label: Text(v),
                         selected: type == v,
-                        onSelected: (_) => setState(() => type = v),
+                        onSelected: (_) => setState(() {
+                          type = v;
+                          touched.add(AnimalField.type);
+                        }),
                       ),
                     )
                     .toList(),
@@ -471,6 +524,7 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
               const SizedBox(height: 14),
               TextFormField(
                 controller: breed,
+                onChanged: (_) => touched.add(AnimalField.breed),
                 decoration: const InputDecoration(labelText: 'Raza *'),
                 validator: (v) =>
                     v == null || v.trim().isEmpty ? 'Ingresa la raza' : null,
@@ -482,7 +536,10 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
                   ButtonSegment(value: 'Macho', label: Text('Macho')),
                 ],
                 selected: {sex},
-                onSelectionChanged: (v) => setState(() => sex = v.first),
+                onSelectionChanged: (v) => setState(() {
+                  sex = v.first;
+                  touched.add(AnimalField.sex);
+                }),
               ),
             ],
             if (step == 1) ...[
@@ -502,12 +559,18 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
                     lastDate: DateTime.now(),
                     initialDate: birthDate ?? DateTime.now(),
                   );
-                  if (d != null) setState(() => birthDate = d);
+                  if (d != null) {
+                    setState(() {
+                      birthDate = d;
+                      touched.add(AnimalField.birthDate);
+                    });
+                  }
                 },
               ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: weight,
+                onChanged: (_) => touched.add(AnimalField.weight),
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
@@ -525,12 +588,23 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
                       (p) => DropdownMenuItem(value: p.id, child: Text(p.name)),
                     )
                     .toList(),
-                onChanged: (v) => setState(() => paddockId = v),
+                onChanged: (v) => setState(() {
+                  paddockId = v;
+                  final existing = widget.animal;
+                  if (existing != null) {
+                    locationIntent = AnimalLocationMoveIntent(
+                      animalId: existing.id,
+                      expectedFromPaddockId: existing.paddockId,
+                      toPaddockId: v,
+                    );
+                  }
+                }),
               ),
             ],
             if (step == 2) ...[
               TextFormField(
                 controller: notes,
+                onChanged: (_) => touched.add(AnimalField.notes),
                 maxLines: 4,
                 decoration: const InputDecoration(
                   labelText: 'Observaciones opcionales',

@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/features/paddocks/domain/value_objects/paddock_patch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mi_finca_app/app/theme/app_theme.dart';
@@ -707,6 +708,8 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
 
   String status = 'Disponible';
 
+  final editedFields = <PaddockField>{};
+
   @override
   void initState() {
     super.initState();
@@ -750,6 +753,7 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
           children: [
             TextFormField(
               controller: name,
+              onChanged: (_) => editedFields.add(PaddockField.name),
               decoration: const InputDecoration(
                 labelText: 'Nombre del potrero',
               ),
@@ -758,6 +762,7 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
             const SizedBox(height: 14),
             TextFormField(
               controller: area,
+              onChanged: (_) => editedFields.add(PaddockField.area),
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
@@ -780,11 +785,13 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
             const SizedBox(height: 14),
             TextFormField(
               controller: grass,
+              onChanged: (_) => editedFields.add(PaddockField.pastureType),
               decoration: const InputDecoration(labelText: 'Tipo de pastura'),
             ),
             const SizedBox(height: 14),
             TextFormField(
               controller: restDays,
+              onChanged: (_) => editedFields.add(PaddockField.requiredRestDays),
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
                 labelText: 'Descanso requerido',
@@ -825,6 +832,8 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
               const SizedBox(height: 14),
               TextFormField(
                 controller: plannedGrazingDays,
+                onChanged: (_) =>
+                    editedFields.add(PaddockField.plannedGrazingDays),
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
                   labelText: 'Uso planeado',
@@ -885,6 +894,12 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
                 }
 
                 setState(() {
+                  editedFields.addAll({
+                    PaddockField.status,
+                    PaddockField.grazingStartDate,
+                    PaddockField.plannedGrazingDays,
+                    PaddockField.lastGrazingEndDate,
+                  });
                   status = value;
 
                   if (status == 'En uso') {
@@ -927,6 +942,7 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
 
     if (picked != null && mounted) {
       setState(() {
+        editedFields.add(PaddockField.lastGrazingEndDate);
         lastGrazingEndDate = picked;
       });
     }
@@ -944,6 +960,7 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
 
     if (picked != null && mounted) {
       setState(() {
+        editedFields.add(PaddockField.grazingStartDate);
         grazingStartDate = picked;
       });
     }
@@ -995,7 +1012,25 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
       updatedAt: now,
     );
 
-    await ref.read(paddockViewModelProvider.notifier).save(paddock);
+    final notifier = ref.read(paddockViewModelProvider.notifier);
+    if (old == null) {
+      await notifier.save(paddock);
+    } else {
+      final values = <PaddockField, Object?>{
+        PaddockField.name: paddock.name,
+        PaddockField.area: paddock.areaHectares,
+        PaddockField.pastureType: paddock.pastureType,
+        PaddockField.requiredRestDays: paddock.requiredRestDays,
+        PaddockField.status: paddock.status,
+        PaddockField.grazingStartDate: paddock.grazingStartDate,
+        PaddockField.plannedGrazingDays: paddock.plannedGrazingDays,
+        PaddockField.lastGrazingEndDate: paddock.lastGrazingEndDate,
+      };
+      await notifier.edit(
+        old.id,
+        PaddockPatch({for (final field in editedFields) field: values[field]}),
+      );
+    }
 
     if (!mounted) {
       return;
@@ -1018,7 +1053,15 @@ class PaddockDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final paddocks = ref.watch(paddockViewModelProvider).requireValue;
 
-    final paddock = paddocks.firstWhere((paddock) => paddock.id == paddockId);
+    final paddock = paddocks
+        .where((paddock) => paddock.id == paddockId)
+        .firstOrNull;
+    if (paddock == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Potrero')),
+        body: const Center(child: Text('Potrero no disponible.')),
+      );
+    }
 
     final referenceDate = DateTime.now();
 
@@ -1040,6 +1083,48 @@ class PaddockDetailScreen extends ConsumerWidget {
           IconButton(
             onPressed: () => openPaddockForm(context, paddock),
             icon: const Icon(Icons.edit),
+          ),
+          IconButton(
+            tooltip: 'Eliminar potrero',
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () async {
+              final accepted = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Eliminar potrero'),
+                  content: const Text(
+                    'Solo puede eliminarse un potrero sin animales. El historial de movimientos se conserva.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Cancelar'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Eliminar'),
+                    ),
+                  ],
+                ),
+              );
+              if (accepted != true || !context.mounted) return;
+              try {
+                await ref
+                    .read(paddockViewModelProvider.notifier)
+                    .deletePaddock(paddockId);
+                if (context.mounted) Navigator.pop(context);
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'No se pudo eliminar. Revisa animales asignados, movimientos pendientes o conflictos de sincronización.',
+                      ),
+                    ),
+                  );
+                }
+              }
+            },
           ),
         ],
       ),
@@ -1274,16 +1359,14 @@ Future<void> _showAdjustRestDialog({
     return;
   }
 
-  final now = DateTime.now();
-
   await ref
       .read(paddockViewModelProvider.notifier)
-      .save(
-        paddock.copyWith(
-          requiredRestDays: newRestDays,
-          status: 'Descansando',
-          updatedAt: now,
-        ),
+      .edit(
+        paddock.id,
+        PaddockPatch({
+          PaddockField.requiredRestDays: newRestDays,
+          PaddockField.status: 'Descansando',
+        }),
       );
 
   if (context.mounted) {

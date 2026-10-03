@@ -20,6 +20,7 @@ class Animal {
     required this.createdAt,
     required this.updatedAt,
     this.syncStatus = SyncStatus.pending,
+    this.moveConflict = false,
   });
   final String id;
   final String code;
@@ -41,6 +42,7 @@ class Animal {
   final DateTime createdAt;
   final DateTime updatedAt;
   final SyncStatus syncStatus;
+  final bool moveConflict;
   String get displayName => (name?.trim().isNotEmpty ?? false) ? name! : code;
   Animal copyWith({
     String? code,
@@ -59,6 +61,7 @@ class Animal {
     SyncStatus? syncStatus,
   }) => Animal(
     id: id,
+    moveConflict: moveConflict,
     code: code ?? this.code,
     name: name ?? this.name,
     type: type ?? this.type,

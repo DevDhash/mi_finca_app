@@ -29,6 +29,20 @@ void main() {
     },
   );
 
+  test(
+    'manual sync retries evidence reconciliation when pending count is zero',
+    () async {
+      repository.pending = 0;
+      await container.read(syncViewModelProvider.future);
+      await container
+          .read(syncViewModelProvider.notifier)
+          .syncPendingIfOnline();
+      expect(repository.calls, 0);
+      await container.read(syncViewModelProvider.notifier).syncNow();
+      expect(repository.calls, 1);
+    },
+  );
+
   test('manual offline mode does not start uploads', () async {
     await container.read(syncViewModelProvider.future);
     final notifier = container.read(syncViewModelProvider.notifier);
@@ -65,6 +79,7 @@ void main() {
 
 class FakeSyncRepository implements SyncRepository {
   int calls = 0;
+  int pending = 1;
   bool fail = false;
   Completer<void>? gate;
   @override
@@ -72,7 +87,7 @@ class FakeSyncRepository implements SyncRepository {
   @override
   Future<DateTime?> lastSync() async => null;
   @override
-  Future<int> pendingCount() async => 1;
+  Future<int> pendingCount() async => pending;
   @override
   Future<void> pushPendingChanges() async {
     calls++;

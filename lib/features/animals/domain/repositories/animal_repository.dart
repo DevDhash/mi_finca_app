@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/features/animals/domain/value_objects/animal_patch.dart';
 import 'package:mi_finca_app/features/animals/domain/entities/animal.dart';
 import 'package:mi_finca_app/features/animals/domain/entities/movement.dart';
 
@@ -18,4 +19,16 @@ enum AnimalDeletionResult {
   ownershipFailure,
   notFound,
   alreadyDeleted,
+}
+
+abstract interface class AnimalEditRepository {
+  Future<void> editAnimal(
+    String id,
+    AnimalPatch patch, {
+    String? selectedPhoto,
+  });
+}
+
+abstract interface class AnimalMoveRepository {
+  Future<void> saveAtomicMovement(Movement movement, {int? plannedGrazingDays});
 }

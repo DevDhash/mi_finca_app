@@ -1,9 +1,17 @@
+import 'package:mi_finca_app/features/animals/domain/value_objects/animal_patch.dart';
 import 'dart:async';
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 import 'package:mi_finca_app/core/database/sync_metadata.dart';
+
+import 'package:uuid/uuid.dart';
+import 'package:mi_finca_app/features/paddocks/domain/value_objects/paddock_patch.dart';
+import 'package:mi_finca_app/features/animals/domain/value_objects/animal_move_command.dart';
+part 'paddock_patch_store.dart';
+part 'animal_patch_store.dart';
+part 'animal_move_store.dart';
 
 /// A small schema-less Drift store. Domain repositories own serialization,
 /// which keeps the UI independent from both SQLite and a future REST backend.
@@ -30,7 +38,14 @@ final class AppDatabase extends GeneratedDatabase {
         return (job is Map && job['status'] != 'published') ||
             (localPath != null && payload['remotePhotoPath'] == null);
       });
-      if (count > 0 || hasUnpublishedPhoto) throw const PendingSessionChanges();
+      if (count > 0 ||
+          hasUnpublishedPhoto ||
+          await _hasDeletionConflicts() ||
+          await hasUnresolvedAnimalMoves() ||
+          await hasUnresolvedPaddockIntents() ||
+          await hasUnresolvedAnimalIntents()) {
+        throw const PendingSessionChanges();
+      }
     } catch (_) {
       _closingSession = false;
       rethrow;
@@ -170,7 +185,38 @@ final class AppDatabase extends GeneratedDatabase {
       if (persistedPhotoOwner != null && persistedPhotoOwner != sessionOwner) {
         throw StateError('La foto pertenece a otra cuenta.');
       }
-      final next = {...payload};
+      if (collection == 'animals' &&
+          pending &&
+          previous != null &&
+          (previous.payload['_animalConflict'] != null ||
+              previous.payload['_moveProjection'] != null ||
+              (owner != null &&
+                  (await animalPatches(
+                    owner,
+                    entityId: id,
+                  )).any((r) => r.payload['state'] != 'completed')))) {
+        throw StateError(
+          'Use explicit animal intent; unresolved operations exist',
+        );
+      }
+      if (collection == 'paddocks' &&
+          pending &&
+          previous != null &&
+          (previous.payload['_moveProjection'] != null ||
+              (owner != null &&
+                  (await paddockPatches(
+                    owner,
+                    entityId: id,
+                  )).any((r) => r.payload['state'] != 'completed')))) {
+        throw StateError(
+          'Usa intención explícita; hay cambios de potrero pendientes.',
+        );
+      }
+      final next = collection == 'animals' && !pending && owner != null
+          ? await overlayAnimalIntents(id, owner, payload)
+          : collection == 'paddocks' && !pending && owner != null
+          ? await overlayPaddockIntents(id, owner, payload)
+          : {...payload};
       if (pending) {
         next[SyncMetadata.key] = SyncMetadata.operation(
           ownerId: owner,
@@ -192,6 +238,25 @@ final class AppDatabase extends GeneratedDatabase {
         next[SyncMetadata.key] = oldMeta;
       } else {
         next.remove(SyncMetadata.key);
+      }
+      if (collection == 'animals' && pending) {
+        next[SyncMetadata.key] = {
+          ...SyncMetadata.read(next),
+          'writeKind': payload['_animalWriteKind'] ?? 'legacy_full_write',
+        };
+      }
+      if (collection == 'paddocks' && pending) {
+        next[SyncMetadata.key] = {
+          ...SyncMetadata.read(next),
+          'writeKind': previous == null ? 'create' : 'legacy_full_write',
+        };
+      }
+      if (oldMeta['deleteRejection'] != null) {
+        next[SyncMetadata.key] = {
+          ...SyncMetadata.read(next),
+          'deleteRejection': oldMeta['deleteRejection'],
+          'rejectedDelete': oldMeta['rejectedDelete'] ?? oldMeta,
+        };
       }
       if (SyncMetadata.collections.contains(collection)) {
         final presence = verifiedRemoteOwner != null
@@ -285,6 +350,29 @@ final class AppDatabase extends GeneratedDatabase {
       throw StateError('Propietario no verificado para este registro.');
     }
     if (record.isDeleted) return; // Keep identity, revision and ack unchanged.
+    if (collection == 'paddocks') {
+      if ((await readRecords(
+        'animals',
+      )).any((p) => SyncMetadata.owner(p) == ownerId && p['paddockId'] == id)) {
+        throw StateError('SYNC_PADDOCK_OCCUPIED');
+      }
+      if ((await animalMoveCommands(ownerId)).any(
+        (r) =>
+            r.payload['state'] != 'completed' &&
+            (r.payload['fromPaddockId'] == id ||
+                r.payload['toPaddockId'] == id),
+      )) {
+        throw StateError('Resolve pending MOVE before deletion');
+      }
+    }
+    if (collection == 'paddocks' && record.payload['_moveProjection'] != null) {
+      throw StateError('Resuelve el movimiento pendiente antes de eliminar.');
+    }
+    if (SyncMetadata.read(record.payload)['deleteRejection'] != null) {
+      throw StateError(
+        'Resuelve el conflicto de eliminación antes de reintentar.',
+      );
+    }
     final now = DateTime.now();
     final meta = SyncMetadata.operation(
       ownerId: ownerId,
@@ -300,6 +388,7 @@ final class AppDatabase extends GeneratedDatabase {
         SyncMetadata.key: {
           ...meta,
           'remotePresence': SyncMetadata.presenceValue(record.remotePresence),
+          'deletionState': 'pending',
         },
       },
       now,
@@ -456,7 +545,8 @@ final class AppDatabase extends GeneratedDatabase {
       final pending = (await readPendingRecords()).any(
         (r) => r.collection == remote.collection && r.id == remote.id,
       );
-      final oldMeta = SyncMetadata.read(current?.payload ?? {});
+      final oldMeta = SyncMetadata.read(current?.payload ?? {})
+        ..remove('deleteRejection');
       final meta = {
         ...oldMeta,
         'ownerId': ownerId,
@@ -473,9 +563,16 @@ final class AppDatabase extends GeneratedDatabase {
             oldMeta['requestedAt'] ?? remote.deletedAt.toIso8601String(),
         'deletedAt': remote.deletedAt.toUtc().toIso8601String(),
         'remoteOperationId': remote.operationId,
+        'deletionState': 'confirmed',
         if (pending && current?.isDeleted != true)
           'conflict': 'remote_delete_wins',
       };
+      if (remote.collection == 'animals') {
+        await conflictAnimalPatches(remote.id, ownerId);
+      }
+      if (remote.collection == 'paddocks') {
+        await conflictPaddockPatches(remote.id, ownerId);
+      }
       // Keep domain/photo bytes for history and future cleanup, never upload them.
       await _writeRecord(
         remote.collection,
@@ -498,19 +595,170 @@ final class AppDatabase extends GeneratedDatabase {
       throw StateError('Confirmación DELETE inválida.');
     }
     await requireOwner(remote.ownerId);
-    return replaceRecordIfUnchanged(expected, {
+    final acknowledged = await replaceRecordIfUnchanged(expected, {
       ...expected.payload,
       SyncMetadata.key: {
-        ...SyncMetadata.read(expected.payload),
+        ...(SyncMetadata.read(expected.payload)..remove('deleteRejection')),
         'deletedAt': remote.deletedAt.toUtc().toIso8601String(),
         'remoteOperationId': remote.operationId,
+        'deletionState': 'confirmed',
       },
     }, pending: false);
+    if (acknowledged && expected.collection == 'animals') {
+      await conflictAnimalPatches(expected.id, remote.ownerId);
+    }
+    if (acknowledged && expected.collection == 'paddocks') {
+      await conflictPaddockPatches(expected.id, remote.ownerId);
+    }
+    return acknowledged;
   });
+
+  Future<DeletionState> deletionState(String collection, String id) =>
+      transaction(() async {
+        final record = await readRecord(collection, id, includeDeleted: true);
+        if (record == null) return DeletionState.active;
+        final state = SyncMetadata.deletionState(record.payload);
+        if (state != DeletionState.legacyUnknown) return state;
+        final meta = SyncMetadata.read(record.payload);
+        final pending = (await readPendingRecords()).any(
+          (r) => r.collection == collection && r.id == id,
+        );
+        if (pending &&
+            record.operation == 'delete' &&
+            record.ownerId != null &&
+            record.operationId != null &&
+            record.revision > 0 &&
+            meta['deletedAt'] == null &&
+            meta['remoteOperationId'] == null &&
+            meta['localCancellation'] != true) {
+          return DeletionState.pending;
+        }
+        // Unrecognized/corrupt data is not classified by a heuristic.
+        return DeletionState.legacyUnknown;
+      });
+
+  /// Positive business rejection only. Does not infer rejection from missing
+  /// ledger rows, HTTP failures, or absence of remote data.
+  Future<bool> rejectPaddockDelete(PendingRecord expected, String code) =>
+      transaction(() async {
+        if (code != 'SYNC_PADDOCK_OCCUPIED' ||
+            expected.collection != 'paddocks' ||
+            expected.ownerId == null ||
+            expected.operationId == null ||
+            expected.revision < 1 ||
+            expected.operation != 'delete') {
+          throw ArgumentError('Invalid paddock deletion rejection');
+        }
+        await requireOwner(expected.ownerId!);
+        final state = SyncMetadata.deletionState(expected.payload);
+        final pending = (await readPendingRecords()).any(
+          (r) => r.collection == expected.collection && r.id == expected.id,
+        );
+        if (!pending ||
+            !expected.isDeleted ||
+            (state != DeletionState.pending &&
+                state != DeletionState.legacyUnknown)) {
+          return false;
+        }
+        final meta = SyncMetadata.read(expected.payload);
+        // Partial acknowledgement evidence must never be downgraded.
+        if (meta['deletedAt'] != null ||
+            meta['remoteOperationId'] != null ||
+            meta['localCancellation'] == true) {
+          return false;
+        }
+        return replaceRecordIfUnchanged(expected, {
+          ...expected.payload,
+          SyncMetadata.key: {
+            ...meta,
+            'deletionState': 'conflict',
+            'deleteRejection': code,
+          },
+        }, pending: false);
+      });
+
+  /// Caller must provide an authenticated, owner-filtered ACTIVE server row
+  /// serialized in local format, read after the positive business rejection.
+  /// This explicit path is never used by ordinary downloads/putRecord.
+  Future<bool> reconcileRejectedPaddockDelete(
+    PendingRecord expected, {
+    required String remoteOwner,
+    required Map<String, Object?> activePayload,
+  }) => transaction(() async {
+    await requireOwner(remoteOwner);
+    if (expected.ownerId != remoteOwner ||
+        expected.collection != 'paddocks' ||
+        activePayload['id'] != expected.id ||
+        activePayload['user_id'] != remoteOwner ||
+        !activePayload.containsKey('deleted_at') ||
+        activePayload.containsKey(SyncMetadata.key) ||
+        activePayload['deleted_at'] != null ||
+        activePayload['deletedAt'] != null) {
+      throw ArgumentError('Invalid authoritative active paddock');
+    }
+    final current = await readRecord(
+      'paddocks',
+      expected.id,
+      includeDeleted: true,
+    );
+    if (current == null ||
+        current.updatedAt != expected.updatedAt ||
+        !SyncMetadata.sameOperation(current.payload, expected.payload) ||
+        SyncMetadata.deletionState(current.payload) != DeletionState.conflict) {
+      return false;
+    }
+    final meta = SyncMetadata.read(current.payload);
+    if (meta['deleteRejection'] != 'SYNC_PADDOCK_OCCUPIED' ||
+        meta['deletedAt'] != null ||
+        meta['remoteOperationId'] != null ||
+        current.operationId == null ||
+        current.revision < 1) {
+      return false;
+    }
+    await _writeRecord(
+      'paddocks',
+      current.id,
+      {
+        ...activePayload,
+        SyncMetadata.key: {
+          ...meta,
+          'tombstone': false,
+          'deletionState': 'reconciledConflict',
+          'remotePresence': 'confirmed',
+        },
+      },
+      current.updatedAt,
+      pending: false,
+    );
+    return true;
+  });
+
+  Future<bool> _hasDeletionConflicts() async {
+    final rows = await customSelect('SELECT payload FROM records').get();
+    return rows.any((row) {
+      final meta = SyncMetadata.read(
+        Map<String, Object?>.from(
+          jsonDecode(row.read<String>('payload')) as Map,
+        ),
+      );
+      return meta['deleteRejection'] != null;
+    });
+  }
 
   /// Compare the complete operation snapshot except independent presence evidence.
   /// A stale response cannot ACK another revision; current evidence is preserved.
   Future<bool> replaceRecordIfUnchanged(
+    PendingRecord expected,
+    Map<String, Object?> payload, {
+    required bool pending,
+  }) {
+    if (expected.collection == animalMoveCollection) {
+      throw StateError('MOVE requires explicit transition');
+    }
+    return _replaceRecordIfUnchanged(expected, payload, pending: pending);
+  }
+
+  Future<bool> _replaceRecordIfUnchanged(
     PendingRecord expected,
     Map<String, Object?> payload, {
     required bool pending,
@@ -531,6 +779,20 @@ final class AppDatabase extends GeneratedDatabase {
       return false;
     }
     if (current.isDeleted && !SyncMetadata.isDeleted(payload)) return false;
+    final oldMeta = SyncMetadata.read(current.payload);
+    final newMeta = SyncMetadata.read(payload);
+    if (SyncMetadata.deletionState(current.payload) ==
+            DeletionState.confirmed &&
+        (newMeta['deletedAt'] != oldMeta['deletedAt'] ||
+            newMeta['remoteOperationId'] != oldMeta['remoteOperationId'])) {
+      return false;
+    }
+
+    if (oldMeta['deleteRejection'] != null &&
+        newMeta['deleteRejection'] != oldMeta['deleteRejection'] &&
+        SyncMetadata.deletionState(payload) != DeletionState.confirmed) {
+      return false;
+    }
     final next = {...payload};
     final presence = current.remotePresence;
     next[SyncMetadata.key] = {
@@ -643,21 +905,45 @@ final class AppDatabase extends GeneratedDatabase {
     );
   }
 
-  Future<void> removeRecord(String collection, String id) => transaction(
-    () async {
-      _requireWritableSession();
-      if ((await readRecord(collection, id, includeDeleted: true))?.isDeleted ==
-          true) {
-        throw StateError('No se puede eliminar físicamente un tombstone.');
-      }
-      await customStatement(
-        'DELETE FROM records WHERE collection = ? AND id = ?',
-        [collection, id],
-      );
+  Future<void> removeRecord(
+    String collection,
+    String id,
+  ) => transaction(() async {
+    _requireWritableSession();
+    if ((await readRecord(collection, id, includeDeleted: true))?.isDeleted ==
+        true) {
+      throw StateError('No se puede eliminar físicamente un tombstone.');
+    }
+    if (collection == animalMoveCollection ||
+        (collection == 'movements' &&
+            await readRecord(animalMoveCollection, id, includeDeleted: true) !=
+                null) ||
+        (collection == 'movements' &&
+            (await readRecord(
+                  collection,
+                  id,
+                  includeDeleted: true,
+                ))?.payload['_moveReceipt'] !=
+                null) ||
+        collection == animalPatchCollection ||
+        (collection == 'animals' && await hasUnresolvedAnimalIntents()) ||
+        collection == paddockPatchCollection ||
+        (collection == 'paddocks' &&
+            (await hasUnresolvedPaddockIntents() ||
+                await hasUnresolvedAnimalIntents()))) {
+      throw const PendingSessionChanges();
+    }
+    final record = await readRecord(collection, id, includeDeleted: true);
+    if (SyncMetadata.read(record?.payload ?? {})['deleteRejection'] != null) {
+      throw const PendingSessionChanges();
+    }
+    await customStatement(
+      'DELETE FROM records WHERE collection = ? AND id = ?',
+      [collection, id],
+    );
 
-      _recordChanges.add(null);
-    },
-  );
+    _recordChanges.add(null);
+  });
 
   Future<int> pendingCount() async {
     final row = await customSelect(
@@ -667,28 +953,53 @@ final class AppDatabase extends GeneratedDatabase {
     return row.read<int>('count');
   }
 
-  Future<void> markRecordSynced(String collection, String id) => transaction(
-    () async {
-      _requireWritableSession();
-      if ((await readRecord(collection, id, includeDeleted: true))?.isDeleted ==
-          true) {
-        throw StateError('DELETE requiere confirmación por snapshot.');
-      }
-      await customStatement(
-        '''
+  Future<void> markRecordSynced(
+    String collection,
+    String id,
+  ) => transaction(() async {
+    _requireWritableSession();
+    if (collection == animalMoveCollection ||
+        (collection == 'movements' &&
+            await readRecord(animalMoveCollection, id, includeDeleted: true) !=
+                null) ||
+        (collection == 'movements' &&
+            (await readRecord(
+                  collection,
+                  id,
+                  includeDeleted: true,
+                ))?.payload['_moveReceipt'] !=
+                null) ||
+        collection == animalPatchCollection ||
+        (collection == 'animals' && await hasUnresolvedAnimalIntents()) ||
+        collection == paddockPatchCollection ||
+        (collection == 'paddocks' &&
+            (await hasUnresolvedPaddockIntents() ||
+                await hasUnresolvedAnimalIntents()))) {
+      throw StateError('Las intenciones de potrero requieren ACK individual.');
+    }
+    if ((await readRecord(collection, id, includeDeleted: true))?.isDeleted ==
+        true) {
+      throw StateError('DELETE requiere confirmación por snapshot.');
+    }
+    await customStatement(
+      '''
       UPDATE records
       SET pending = 0
       WHERE collection = ? AND id = ?
       ''',
-        [collection, id],
-      );
+      [collection, id],
+    );
 
-      _recordChanges.add(null);
-    },
-  );
+    _recordChanges.add(null);
+  });
 
   Future<void> markAllSynced() => transaction(() async {
     _requireWritableSession();
+    if ((await hasUnresolvedAnimalMoves() ||
+        await hasUnresolvedPaddockIntents() ||
+        await hasUnresolvedAnimalIntents())) {
+      throw StateError('Las intenciones de potrero requieren ACK individual.');
+    }
     if ((await readPendingRecords()).any((r) => r.isDeleted)) {
       throw StateError('DELETE requiere confirmación individual.');
     }
@@ -718,7 +1029,11 @@ final class AppDatabase extends GeneratedDatabase {
 
   Future<void> clearAll() async {
     await transaction(() async {
-      if ((await readPendingRecords()).any((r) => r.isDeleted)) {
+      if (await _hasDeletionConflicts() ||
+          await hasUnresolvedAnimalMoves() ||
+          await hasUnresolvedPaddockIntents() ||
+          await hasUnresolvedAnimalIntents() ||
+          (await readPendingRecords()).any((r) => r.isDeleted)) {
         throw const PendingSessionChanges();
       }
       await customStatement('DELETE FROM records');

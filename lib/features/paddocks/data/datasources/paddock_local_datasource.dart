@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/features/paddocks/domain/value_objects/paddock_patch.dart';
 import 'package:mi_finca_app/core/database/app_database.dart';
 import 'package:mi_finca_app/features/paddocks/data/models/paddock_model.dart';
 import 'package:mi_finca_app/features/paddocks/domain/entities/paddock.dart';
@@ -24,6 +25,12 @@ class PaddockLocalDataSource {
       pending: pending,
       verifiedRemoteOwner: verifiedRemoteOwner,
     );
+  }
+
+  Future<void> edit(String id, PaddockPatch patch) async {
+    final owner = await _database.localOwner();
+    if (owner == null) throw StateError('Sesión requerida');
+    await _database.applyPaddockPatch(id, owner, patch);
   }
 
   Future<void> markSynced(String id) {

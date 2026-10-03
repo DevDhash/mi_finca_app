@@ -22,6 +22,7 @@ abstract final class AnimalModel {
   };
   static Animal fromJson(Map<String, Object?> j) => Animal(
     id: j['id']! as String,
+    moveConflict: (j['_moveProjection'] as Map?)?['rejected'] == true,
     code: j['code']! as String,
     name: j['name'] as String?,
     type: j['type']! as String,
