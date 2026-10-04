@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/features/paddocks/domain/value_objects/paddock_history_reference.dart';
 import 'package:mi_finca_app/features/paddocks/domain/value_objects/paddock_patch.dart';
 import 'package:mi_finca_app/core/domain/sync_status.dart';
 import 'package:mi_finca_app/features/paddocks/data/datasources/paddock_local_datasource.dart';
@@ -6,7 +7,10 @@ import 'package:mi_finca_app/features/paddocks/domain/entities/paddock.dart';
 import 'package:mi_finca_app/features/paddocks/domain/repositories/paddock_repository.dart';
 
 class PaddockRepositoryImpl
-    implements PaddockRepository, PaddockEditRepository {
+    implements
+        PaddockRepository,
+        PaddockEditRepository,
+        PaddockHistoryRepository {
   const PaddockRepositoryImpl({
     required PaddockLocalDataSource local,
     required PaddockRemoteDataSource remote,
@@ -40,6 +44,11 @@ class PaddockRepositoryImpl
       return localItems;
     }
   }
+
+  @override
+  Future<Map<String, PaddockHistoryReference>> resolveHistory(
+    Set<String> ids,
+  ) => _local.resolveHistory(ids);
 
   @override
   Future<void> edit(String id, PaddockPatch patch) => _local.edit(id, patch);

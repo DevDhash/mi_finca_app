@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/features/paddocks/presentation/widgets/movement_history_title.dart';
 import 'package:mi_finca_app/features/animals/domain/value_objects/animal_patch.dart';
 import 'package:mi_finca_app/features/animals/presentation/viewmodels/animal_photo_provider.dart';
 import 'dart:io';
@@ -581,24 +582,39 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
               ),
               const SizedBox(height: 14),
               DropdownButtonFormField<String>(
-                value: paddockId,
-                decoration: const InputDecoration(labelText: 'Potrero actual'),
+                value: paddocks.any((p) => p.id == paddockId)
+                    ? paddockId
+                    : null,
+                decoration: InputDecoration(
+                  labelText: 'Potrero actual',
+                  helperText:
+                      paddockId != null &&
+                          !paddocks.any((p) => p.id == paddockId)
+                      ? 'Ubicación actual no disponible: $paddockId. Usa Mover de potrero para cambiarla.'
+                      : null,
+                  helperMaxLines: 3,
+                ),
                 items: paddocks
                     .map(
                       (p) => DropdownMenuItem(value: p.id, child: Text(p.name)),
                     )
                     .toList(),
-                onChanged: (v) => setState(() {
-                  paddockId = v;
-                  final existing = widget.animal;
-                  if (existing != null) {
-                    locationIntent = AnimalLocationMoveIntent(
-                      animalId: existing.id,
-                      expectedFromPaddockId: existing.paddockId,
-                      toPaddockId: v,
-                    );
-                  }
-                }),
+                onChanged:
+                    widget.animal != null &&
+                        paddockId != null &&
+                        !paddocks.any((p) => p.id == paddockId)
+                    ? null
+                    : (v) => setState(() {
+                        paddockId = v;
+                        final existing = widget.animal;
+                        if (existing != null) {
+                          locationIntent = AnimalLocationMoveIntent(
+                            animalId: existing.id,
+                            expectedFromPaddockId: existing.paddockId,
+                            toPaddockId: v,
+                          );
+                        }
+                      }),
               ),
             ],
             if (step == 2) ...[
@@ -826,13 +842,7 @@ class _AnimalDetailScreenState extends ConsumerState<AnimalDetailScreen> {
                       .map(
                         (m) => ListTile(
                           leading: const Icon(Icons.swap_horiz),
-                          title: Text(
-                            paddocks
-                                    .where((p) => p.id == m.toPaddockId)
-                                    .firstOrNull
-                                    ?.name ??
-                                'Potrero',
-                          ),
+                          title: MovementHistoryTitle(movement: m),
                           subtitle: Text(
                             '${m.date.day}/${m.date.month}/${m.date.year}',
                           ),

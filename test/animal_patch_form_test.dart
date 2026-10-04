@@ -43,9 +43,11 @@ class FormPaddocks extends PaddockViewModel {
 }
 
 void main() {
-  for (final move in [false, true]) {
+  for (final scenario in ['edit', 'move', 'missing']) {
+    final move = scenario == 'move';
+    final missing = scenario == 'missing';
     testWidgets(
-      'form touched name only; explicit move blocks entire save=$move',
+      'form touched name only; explicit move blocks entire save=$move missing=$missing',
       (tester) async {
         final vm = AnimalIntentVm();
         final animal = Animal(
@@ -55,7 +57,7 @@ void main() {
           type: 'Vaca',
           breed: 'X',
           sex: 'Hembra',
-          paddockId: 'B',
+          paddockId: missing ? 'deleted-paddock' : 'B',
           createdAt: DateTime(2026),
           updatedAt: DateTime(2026),
         );
@@ -92,6 +94,21 @@ void main() {
         tester.testTextInput.hide();
         await tester.tap(find.text('Siguiente'));
         await tester.pumpAndSettle();
+        if (missing) {
+          final dropdown = tester.widget<DropdownButtonFormField<String>>(
+            find.byType(DropdownButtonFormField<String>),
+          );
+          expect(dropdown.initialValue, isNull);
+          expect(dropdown.onChanged, isNull);
+          expect(
+            find.textContaining(
+              'Ubicación actual no disponible: deleted-paddock',
+            ),
+            findsOneWidget,
+          );
+          expect(tester.takeException(), isNull);
+          expect(animal.paddockId, 'deleted-paddock');
+        }
         if (move) {
           await tester.tap(find.byType(DropdownButtonFormField<String>));
           await tester.pumpAndSettle();
