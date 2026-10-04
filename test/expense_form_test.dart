@@ -41,7 +41,7 @@ Future<void> openForm(
   await tester.pumpAndSettle();
   await tester.enterText(find.byType(TextField).first, '12,50');
   await tester.enterText(find.byType(TextField).last, 'Mi nota');
-  await tester.ensureVisible(find.byType(FilledButton));
+  await tester.ensureVisible(find.bySubtype<FilledButton>());
 }
 
 void main() {
@@ -50,12 +50,12 @@ void main() {
   ) async {
     final model = ControlledExpenseViewModel();
     await openForm(tester, model);
-    await tester.tap(find.byType(FilledButton));
-    await tester.tap(find.byType(FilledButton));
+    await tester.tap(find.bySubtype<FilledButton>());
+    await tester.tap(find.bySubtype<FilledButton>());
     await tester.pump();
     expect(model.saves, hasLength(1));
     expect(
-      tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+      tester.widget<FilledButton>(find.bySubtype<FilledButton>()).onPressed,
       isNull,
     );
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
@@ -73,7 +73,7 @@ void main() {
   testWidgets('failure preserves inputs and enables retry', (tester) async {
     final model = ControlledExpenseViewModel();
     await openForm(tester, model);
-    await tester.tap(find.byType(FilledButton));
+    await tester.tap(find.bySubtype<FilledButton>());
     await tester.pump();
     model.completion.completeError(StateError('Local write failed'));
     await tester.pumpAndSettle();
@@ -91,11 +91,11 @@ void main() {
       'Mi nota',
     );
     expect(
-      tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+      tester.widget<FilledButton>(find.bySubtype<FilledButton>()).onPressed,
       isNotNull,
     );
     model.completion = Completer<void>();
-    await tester.tap(find.byType(FilledButton));
+    await tester.tap(find.bySubtype<FilledButton>());
     expect(model.saves, hasLength(2));
     model.completion.complete();
     await tester.pumpAndSettle();

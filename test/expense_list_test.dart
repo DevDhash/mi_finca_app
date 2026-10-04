@@ -67,7 +67,7 @@ void main() {
       );
       expect(find.text(label(DateTime.now())), findsOneWidget);
       expect(find.text('Registrar gasto'), findsOneWidget);
-      expect(find.text('S/ 0,00'), findsOneWidget);
+      expect(find.text('S/ 0'), findsOneWidget);
       await tester.tap(find.text('Registrar gasto'));
       await tester.pumpAndSettle();
       expect(find.byType(ExpenseFormScreen), findsOneWidget);
@@ -106,7 +106,7 @@ void main() {
     await selectMonth(tester, previous);
     expect(find.textContaining('historico'), findsOneWidget);
     expect(find.textContaining('actual-reciente'), findsNothing);
-    expect(find.text('S/ 1.250,00'), findsNWidgets(2));
+    expect(find.text('S/ 1.250'), findsNWidgets(2));
     expect(find.text('1 gasto'), findsOneWidget);
     expect(
       tester.widget<Text>(find.byKey(const Key('expense-month-count'))).data,
@@ -128,7 +128,7 @@ void main() {
     expect(find.text('0 gastos'), findsOneWidget);
     await selectMonth(tester, previous);
     expect(find.textContaining('anterior'), findsOneWidget);
-    expect(find.text('S/ 50,00'), findsNWidgets(2));
+    expect(find.text('S/ 50'), findsNWidgets(2));
     await selectMonth(tester, DateTime(now.year, now.month));
     expect(find.text('Sin gastos en ${label(now)}'), findsOneWidget);
   });
