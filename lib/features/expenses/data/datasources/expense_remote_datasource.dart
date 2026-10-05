@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/core/network/remote_pages.dart';
 import 'package:mi_finca_app/core/domain/sync_status.dart';
 import 'package:mi_finca_app/features/expenses/domain/entities/expense.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -33,12 +34,19 @@ class ExpenseRemoteDataSource {
       throw const AuthException('No hay usuario autenticado.');
     }
 
-    final response = await _client
-        .from('expenses')
-        .select('id, category, amount, date, note, updated_at')
-        .eq('user_id', user.id)
-        .isFilter('deleted_at', null)
-        .order('date', ascending: false);
+    final response = await readRemotePages((after) async {
+      var query = _client
+          .from('expenses')
+          .select('id, category, amount, date, note, updated_at')
+          .eq('user_id', user.id)
+          .isFilter('deleted_at', null);
+      if (after != null) query = query.gt('id', after);
+      return await query.order('id', ascending: true).limit(500);
+    });
+
+    response.sort(
+      (a, b) => (b['date'] as String).compareTo(a['date'] as String),
+    );
 
     return response
         .map(

@@ -32,3 +32,8 @@ abstract interface class AnimalEditRepository {
 abstract interface class AnimalMoveRepository {
   Future<void> saveAtomicMovement(Movement movement, {int? plannedGrazingDays});
 }
+
+abstract interface class MovementRefreshRepository {
+  Future<List<Movement>> refreshMovements();
+  Future<List<Movement>> getLocalMovements();
+}

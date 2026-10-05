@@ -19,6 +19,8 @@ final class AppDatabase extends GeneratedDatabase {
   AppDatabase([QueryExecutor? executor])
     : super(executor ?? driftDatabase(name: 'mi_finca_mvp'));
 
+  int _sessionGeneration = 0;
+  int get sessionGeneration => _sessionGeneration;
   bool _closingSession = false;
   bool get isClosingSession => _closingSession;
 
@@ -1017,6 +1019,9 @@ final class AppDatabase extends GeneratedDatabase {
   }
 
   Future<void> writeSetting(String key, String value) async {
+    if (key == 'session' && await readSetting(key) != value) {
+      _sessionGeneration++;
+    }
     _requireWritableSession();
     await customStatement(
       'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
@@ -1024,10 +1029,13 @@ final class AppDatabase extends GeneratedDatabase {
     );
   }
 
-  Future<void> deleteSetting(String key) =>
-      customStatement('DELETE FROM settings WHERE key = ?', [key]);
+  Future<void> deleteSetting(String key) async {
+    if (key == 'session') _sessionGeneration++;
+    await customStatement('DELETE FROM settings WHERE key = ?', [key]);
+  }
 
   Future<void> clearAll() async {
+    _sessionGeneration++;
     await transaction(() async {
       if (await _hasDeletionConflicts() ||
           await hasUnresolvedAnimalMoves() ||

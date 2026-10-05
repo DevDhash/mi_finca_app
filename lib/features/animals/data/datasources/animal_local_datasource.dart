@@ -15,6 +15,7 @@ class AnimalLocalDataSource {
   const AnimalLocalDataSource(this._database);
 
   final AppDatabase _database;
+  int get sessionGeneration => _database.sessionGeneration;
 
   Future<String?> owner() => _database.localOwner();
 
@@ -383,6 +384,47 @@ class AnimalLocalDataSource {
       );
     });
   }
+
+  Future<List<Movement>> getLocalMovements() => getMovements();
+
+  Future<Map<String, String>> movementSnapshot(String owner) =>
+      _database.runInTransaction(() async {
+        await _database.requireOwner(owner);
+        return {
+          for (final row in await _database.readRecords(
+            'movements',
+            includeDeleted: true,
+          ))
+            row['id']! as String: jsonEncode(row),
+        };
+      });
+
+  Future<void> mergeRemoteMovements(
+    List<Movement> items,
+    String owner,
+    Map<String, String> before,
+  ) => _database.runInTransaction(() async {
+    await _database.requireOwner(owner);
+    for (final item in items) {
+      final current = await _database.readRecord(
+        'movements',
+        item.id,
+        includeDeleted: true,
+      );
+      // Durable D2 projections and receipts are exclusively owned by the ACK protocol.
+      if (await _database.readRecord(
+                animalMoveCollection,
+                item.id,
+                includeDeleted: true,
+              ) !=
+              null ||
+          current?.payload['_moveReceipt'] != null) {
+        continue;
+      }
+      if (jsonEncode(current?.payload) != (before[item.id] ?? 'null')) continue;
+      await saveMovement(item, pending: false, verifiedRemoteOwner: owner);
+    }
+  });
 
   Future<void> markAnimalSynced(String id) {
     return _database.markRecordSynced('animals', id);

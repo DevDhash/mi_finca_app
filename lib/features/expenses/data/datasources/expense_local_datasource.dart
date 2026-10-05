@@ -7,6 +7,7 @@ class ExpenseLocalDataSource {
   const ExpenseLocalDataSource(this._database);
 
   final AppDatabase _database;
+  int get sessionGeneration => _database.sessionGeneration;
 
   Future<List<Expense>> getAll() async => (await _database.readRecords(
     'expenses',

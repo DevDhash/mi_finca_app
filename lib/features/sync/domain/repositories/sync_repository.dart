@@ -15,3 +15,7 @@ abstract interface class TombstoneSyncRepository implements SyncRepository {
     String ownerId,
   );
 }
+
+abstract interface class DataRefreshMetadataRepository {
+  Future<DateTime?> lastDataRefresh();
+}

@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/core/network/remote_pages.dart';
 import 'package:mi_finca_app/core/domain/sync_status.dart';
 import 'package:mi_finca_app/features/animals/domain/entities/animal.dart';
 import 'package:mi_finca_app/features/animals/domain/entities/movement.dart';
@@ -39,14 +40,22 @@ class AnimalRemoteDataSource {
       throw const AuthException('No hay usuario autenticado.');
     }
 
-    final response = await _client
-        .from('animals')
-        .select(
-          'id, code, name, type, breed, sex, remote_photo_path, birth_date, weight, paddock_id, notes, status, created_at, updated_at',
-        )
-        .eq('user_id', user.id)
-        .isFilter('deleted_at', null)
-        .order('updated_at', ascending: false);
+    final response = await readRemotePages((after) async {
+      var query = _client
+          .from('animals')
+          .select(
+            'id, code, name, type, breed, sex, remote_photo_path, birth_date, weight, paddock_id, notes, status, created_at, updated_at',
+          )
+          .eq('user_id', user.id)
+          .isFilter('deleted_at', null);
+      if (after != null) query = query.gt('id', after);
+      return await query.order('id', ascending: true).limit(500);
+    });
+
+    response.sort(
+      (a, b) =>
+          (b['updated_at'] as String).compareTo(a['updated_at'] as String),
+    );
 
     return response
         .map(
@@ -80,12 +89,19 @@ class AnimalRemoteDataSource {
       throw const AuthException('No hay usuario autenticado.');
     }
 
-    final response = await _client
-        .from('animal_movements')
-        .select('id, animal_id, from_paddock_id, to_paddock_id, moved_at')
-        .eq('user_id', user.id)
-        .isFilter('deleted_at', null)
-        .order('moved_at', ascending: false);
+    final response = await readRemotePages((after) async {
+      var query = _client
+          .from('animal_movements')
+          .select('id, animal_id, from_paddock_id, to_paddock_id, moved_at')
+          .eq('user_id', user.id)
+          .isFilter('deleted_at', null);
+      if (after != null) query = query.gt('id', after);
+      return await query.order('id', ascending: true).limit(500);
+    });
+
+    response.sort(
+      (a, b) => (b['moved_at'] as String).compareTo(a['moved_at'] as String),
+    );
 
     return response
         .where((json) => json['to_paddock_id'] != null)

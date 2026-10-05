@@ -96,6 +96,14 @@ class PaddockViewModel extends AsyncNotifier<List<Paddock>> {
     );
   }
 
+  Future<void> reloadLocal() async {
+    final repository = ref.read(paddockRepositoryProvider);
+    if (repository is PaddockRefreshRepository) {
+      final items = await (repository as PaddockRefreshRepository).getLocal();
+      if (ref.mounted) state = AsyncData(items);
+    }
+  }
+
   Future<void> reload() async {
     state = AsyncData(await ref.read(paddockRepositoryProvider).getAll());
   }

@@ -10,7 +10,8 @@ class PaddockRepositoryImpl
     implements
         PaddockRepository,
         PaddockEditRepository,
-        PaddockHistoryRepository {
+        PaddockHistoryRepository,
+        PaddockRefreshRepository {
   const PaddockRepositoryImpl({
     required PaddockLocalDataSource local,
     required PaddockRemoteDataSource remote,
@@ -43,6 +44,24 @@ class PaddockRepositoryImpl
     } catch (_) {
       return localItems;
     }
+  }
+
+  @override
+  Future<List<Paddock>> getLocal() => _local.getAll();
+
+  @override
+  Future<List<Paddock>> refreshPaddocks() async {
+    final generation = _local.sessionGeneration;
+    final owner = _remote.currentUserId;
+    if (owner == null) throw StateError('Sesión requerida');
+    final snapshot = await _local.snapshot(owner);
+    final items = await _remote.getAll();
+    if (_local.sessionGeneration != generation ||
+        _remote.currentUserId != owner) {
+      throw StateError('La sesión cambió');
+    }
+    await _local.mergeRemote(items, owner, snapshot);
+    return _local.getAll();
   }
 
   @override

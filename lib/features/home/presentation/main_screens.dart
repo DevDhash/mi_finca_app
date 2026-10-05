@@ -1183,13 +1183,12 @@ class SyncScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final sync = ref.watch(syncViewModelProvider).requireValue;
 
-    final isSynced = sync.pendingChanges == 0 && sync.isOnline;
     final isOffline = !sync.isOnline;
     final isPending = sync.pendingChanges > 0 && sync.isOnline;
 
     final icon = isOffline
         ? Icons.cloud_off_rounded
-        : sync.isSyncing
+        : sync.isRefreshing
         ? Icons.cloud_sync_rounded
         : isPending
         ? Icons.cloud_upload_rounded
@@ -1197,17 +1196,17 @@ class SyncScreen extends ConsumerWidget {
 
     final title = isOffline
         ? 'Modo sin conexión'
-        : sync.isSyncing
-        ? 'Sincronizando cambios'
+        : sync.isRefreshing
+        ? 'Actualizando datos...'
         : isPending
-        ? '${sync.pendingChanges} cambios pendientes'
-        : 'Todo sincronizado';
+        ? '${sync.pendingChanges} cambios pendientes de envío'
+        : 'Sin cambios pendientes';
 
     final description = isOffline
         ? 'Puedes seguir registrando datos. Se guardarán localmente y se subirán cuando vuelvas a tener conexión.'
         : isPending
-        ? 'Hay cambios guardados en el dispositivo que aún no se han subido a Supabase.'
-        : 'Tus datos locales están sincronizados con Supabase.';
+        ? 'Se enviarán automáticamente mientras la app esté abierta y haya conexión.'
+        : 'No hay cambios pendientes de envío en este dispositivo.';
 
     final iconColor = isOffline
         ? AppColors.muted
@@ -1281,10 +1280,10 @@ class SyncScreen extends ConsumerWidget {
                   const Divider(height: 26),
                   _SyncInfoRow(
                     icon: Icons.schedule_rounded,
-                    label: 'Última sincronización',
-                    value: sync.lastSync == null
-                        ? 'Aún no realizada'
-                        : '${sync.lastSync!.day}/${sync.lastSync!.month}/${sync.lastSync!.year} ${sync.lastSync!.hour}:${sync.lastSync!.minute.toString().padLeft(2, '0')}',
+                    label: 'Última actualización',
+                    value: sync.lastDataRefresh == null
+                        ? 'Nunca'
+                        : '${sync.lastDataRefresh!.day}/${sync.lastDataRefresh!.month}/${sync.lastDataRefresh!.year} ${sync.lastDataRefresh!.hour}:${sync.lastDataRefresh!.minute.toString().padLeft(2, '0')}',
                   ),
                   const Divider(height: 26),
                   _SyncInfoRow(
@@ -1315,11 +1314,10 @@ class SyncScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 20),
           FilledButton.icon(
-            onPressed:
-                !sync.isOnline || sync.pendingChanges == 0 || sync.isSyncing
+            onPressed: !sync.isOnline || sync.manualOffline || sync.isRefreshing
                 ? null
-                : ref.read(syncViewModelProvider.notifier).syncNow,
-            icon: sync.isSyncing
+                : ref.read(syncViewModelProvider.notifier).refreshData,
+            icon: sync.isRefreshing
                 ? const SizedBox(
                     width: 18,
                     height: 18,
@@ -1327,19 +1325,26 @@ class SyncScreen extends ConsumerWidget {
                   )
                 : const Icon(Icons.sync_rounded),
             label: Text(
-              sync.isSyncing ? 'Sincronizando...' : 'Sincronizar ahora',
+              sync.isRefreshing ? 'Actualizando datos...' : 'Actualizar datos',
             ),
           ),
           const SizedBox(height: 10),
-          if (isSynced)
+          if (sync.refreshResult != null && !sync.isRefreshing)
+            Text(
+              sync.refreshResult!.complete
+                  ? 'Datos actualizados'
+                  : 'Actualización incompleta',
+              textAlign: TextAlign.center,
+            ),
+          if (!isOffline)
             const Text(
-              'No hay acciones pendientes por realizar.',
+              'Busca cambios realizados desde otros dispositivos.',
               textAlign: TextAlign.center,
               style: TextStyle(color: AppColors.muted),
             )
           else if (isOffline)
             const Text(
-              'Cuando vuelvas a estar en línea, podrás sincronizar los cambios pendientes.',
+              'Conéctate a internet para buscar cambios nuevos.',
               textAlign: TextAlign.center,
               style: TextStyle(color: AppColors.muted),
             ),

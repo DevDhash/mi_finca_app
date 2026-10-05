@@ -7,7 +7,11 @@ import 'package:mi_finca_app/features/sync/data/datasources/sync_remote_datasour
 import 'package:mi_finca_app/features/sync/domain/repositories/sync_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class SyncRepositoryImpl implements SyncRepository, TombstoneSyncRepository {
+class SyncRepositoryImpl
+    implements
+        SyncRepository,
+        TombstoneSyncRepository,
+        DataRefreshMetadataRepository {
   SyncRepositoryImpl(this._local, this._remote, {AnimalPhotoSync? photos})
     : _photos = photos;
 
@@ -31,6 +35,9 @@ class SyncRepositoryImpl implements SyncRepository, TombstoneSyncRepository {
     await _discoverPhotos();
     return _local.pendingCount();
   }
+
+  @override
+  Future<DateTime?> lastDataRefresh() => _local.lastDataRefresh();
 
   @override
   Future<DateTime?> lastSync() => _local.lastSync();
@@ -93,6 +100,7 @@ class SyncRepositoryImpl implements SyncRepository, TombstoneSyncRepository {
   }
 
   Future<void> _pullTombstones() async {
+    final generation = _local.sessionGeneration;
     final remote = _remote;
 
     if (remote is! DeletionRemoteDataSource) {
@@ -113,7 +121,9 @@ class SyncRepositoryImpl implements SyncRepository, TombstoneSyncRepository {
       tombstones = await remote.fetchTombstones(owner);
     } on PostgrestException catch (error) {
       if (error.code == '42P01' || error.code == 'PGRST205') {
-        return;
+        throw StateError(
+          'La infraestructura de eliminaciones no está disponible.',
+        );
       }
 
       rethrow;
@@ -123,7 +133,11 @@ class SyncRepositoryImpl implements SyncRepository, TombstoneSyncRepository {
       throw StateError('La sesión cambió.');
     }
 
-    await _local.mergeTombstones(owner, tombstones);
+    await _local.mergeTombstones(
+      owner,
+      tombstones,
+      sessionGeneration: generation,
+    );
   }
 
   Future<void> _push() async {

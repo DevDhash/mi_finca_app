@@ -230,6 +230,18 @@ class AnimalViewModel extends AsyncNotifier<AnimalState> {
     }
   }
 
+  Future<void> reloadAllLocal() async {
+    final generation = ++_localRead;
+    final repository = ref.read(animalRepositoryProvider);
+    final animals = await repository.getLocal();
+    final movements = repository is MovementRefreshRepository
+        ? await (repository as MovementRefreshRepository).getLocalMovements()
+        : state.value?.movements ?? <Movement>[];
+    if (ref.mounted && generation == _localRead) {
+      state = AsyncData(AnimalState(animals: animals, movements: movements));
+    }
+  }
+
   Future<void> reload() async {
     final repository = ref.read(animalRepositoryProvider);
     await repository.getAll();

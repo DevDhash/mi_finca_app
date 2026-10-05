@@ -36,8 +36,19 @@ class SyncLocalDataSource {
     RemoteTombstone remote,
   ) => _database.acknowledgeDelete(record, remote);
 
-  Future<void> mergeTombstones(String owner, List<RemoteTombstone> records) =>
-      _database.mergeRemoteTombstones(owner, records);
+  int get sessionGeneration => _database.sessionGeneration;
+
+  Future<void> mergeTombstones(
+    String owner,
+    List<RemoteTombstone> records, {
+    int? sessionGeneration,
+  }) => _database.runInTransaction(() async {
+    if (sessionGeneration != null &&
+        sessionGeneration != _database.sessionGeneration) {
+      throw StateError('La sesión cambió');
+    }
+    await _database.mergeRemoteTombstones(owner, records);
+  });
 
   Future<List<PendingRecord>> rejectedPaddockDeletes(String owner) async {
     await _database.requireOwner(owner);
@@ -170,6 +181,9 @@ class SyncLocalDataSource {
 
   Future<bool> acknowledge(PendingRecord record) => _database
       .replaceRecordIfUnchanged(record, record.payload, pending: false);
+
+  Future<DateTime?> lastDataRefresh() async =>
+      DateTime.tryParse(await _database.readSetting('last_data_refresh') ?? '');
 
   Future<DateTime?> lastSync() async {
     final raw = await _database.readSetting('last_sync');

@@ -8,7 +8,11 @@ import 'package:mi_finca_app/features/animals/domain/entities/movement.dart';
 import 'package:mi_finca_app/features/animals/domain/repositories/animal_repository.dart';
 
 class AnimalRepositoryImpl
-    implements AnimalRepository, AnimalEditRepository, AnimalMoveRepository {
+    implements
+        AnimalRepository,
+        AnimalEditRepository,
+        AnimalMoveRepository,
+        MovementRefreshRepository {
   const AnimalRepositoryImpl({
     required AnimalLocalDataSource local,
     required AnimalRemoteDataSource remote,
@@ -110,6 +114,7 @@ class AnimalRepositoryImpl
 
   @override
   Future<List<Animal>> refreshAnimals() async {
+    final generation = _local.sessionGeneration;
     final owner = _remote.currentUserId;
     if (owner == null) {
       throw StateError('Inicia sesión para actualizar animales.');
@@ -117,7 +122,8 @@ class AnimalRepositoryImpl
     await _pullTombstones?.call();
     final snapshot = await _local.snapshotForRefresh(owner);
     final remoteItems = await _remote.getAnimals();
-    if (_remote.currentUserId != owner) {
+    if (_local.sessionGeneration != generation ||
+        _remote.currentUserId != owner) {
       throw StateError('La sesión cambió durante la actualización.');
     }
     await _local.mergeRemoteAnimals(remoteItems, snapshot);
@@ -149,6 +155,24 @@ class AnimalRepositoryImpl
     } catch (_) {
       return localItems;
     }
+  }
+
+  @override
+  Future<List<Movement>> getLocalMovements() => _local.getMovements();
+
+  @override
+  Future<List<Movement>> refreshMovements() async {
+    final generation = _local.sessionGeneration;
+    final owner = _remote.currentUserId;
+    if (owner == null) throw StateError('Sesión requerida');
+    final snapshot = await _local.movementSnapshot(owner);
+    final items = await _remote.getMovements();
+    if (_local.sessionGeneration != generation ||
+        _remote.currentUserId != owner) {
+      throw StateError('La sesión cambió');
+    }
+    await _local.mergeRemoteMovements(items, owner, snapshot);
+    return _local.getMovements();
   }
 
   @override

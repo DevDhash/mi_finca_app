@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/core/network/remote_pages.dart';
 import 'package:mi_finca_app/core/domain/sync_status.dart';
 import 'package:mi_finca_app/features/paddocks/domain/entities/paddock.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -39,14 +40,22 @@ class PaddockRemoteDataSource {
       throw const AuthException('No hay usuario autenticado.');
     }
 
-    final response = await _client
-        .from('paddocks')
-        .select(
-          'id, name, area, pasture_type, required_rest_days, rotation_order, grazing_start_date, planned_grazing_days, status, last_grazing_end_date, created_at, updated_at',
-        )
-        .eq('user_id', user.id)
-        .isFilter('deleted_at', null)
-        .order('updated_at', ascending: false);
+    final response = await readRemotePages((after) async {
+      var query = _client
+          .from('paddocks')
+          .select(
+            'id, name, area, pasture_type, required_rest_days, rotation_order, grazing_start_date, planned_grazing_days, status, last_grazing_end_date, created_at, updated_at',
+          )
+          .eq('user_id', user.id)
+          .isFilter('deleted_at', null);
+      if (after != null) query = query.gt('id', after);
+      return await query.order('id', ascending: true).limit(500);
+    });
+
+    response.sort(
+      (a, b) =>
+          (b['updated_at'] as String).compareTo(a['updated_at'] as String),
+    );
 
     return response
         .map(

@@ -16,3 +16,8 @@ abstract interface class PaddockEditRepository {
 abstract interface class PaddockHistoryRepository {
   Future<Map<String, PaddockHistoryReference>> resolveHistory(Set<String> ids);
 }
+
+abstract interface class PaddockRefreshRepository {
+  Future<List<Paddock>> refreshPaddocks();
+  Future<List<Paddock>> getLocal();
+}

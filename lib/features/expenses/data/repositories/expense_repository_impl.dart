@@ -32,13 +32,17 @@ class ExpenseRepositoryImpl implements ExpenseRepository {
   }
 
   Future<void> _downloadActive() async {
+    final generation = _local.sessionGeneration;
     final owner = await _local.owner();
     if (owner == null || _remote.currentUserId != owner) {
       throw StateError('La sesión cambió.');
     }
     final snapshot = await _local.snapshot(owner);
     final items = await _remote.getAll();
-    if (_remote.currentUserId != owner) throw StateError('La sesión cambió.');
+    if (_local.sessionGeneration != generation ||
+        _remote.currentUserId != owner) {
+      throw StateError('La sesión cambió.');
+    }
     await _local.mergeActive(items, owner, snapshot);
   }
 

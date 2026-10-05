@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:mi_finca_app/core/database/sync_metadata.dart';
 import 'package:mi_finca_app/features/paddocks/domain/value_objects/paddock_history_reference.dart';
 import 'package:mi_finca_app/features/paddocks/domain/value_objects/paddock_patch.dart';
@@ -9,6 +10,7 @@ class PaddockLocalDataSource {
   const PaddockLocalDataSource(this._database);
 
   final AppDatabase _database;
+  int get sessionGeneration => _database.sessionGeneration;
 
   Future<List<Paddock>> getAll() async => (await _database.readRecords(
     'paddocks',
@@ -59,6 +61,35 @@ class PaddockLocalDataSource {
     if (owner == null) throw StateError('Sesión requerida');
     await _database.applyPaddockPatch(id, owner, patch);
   }
+
+  Future<Map<String, String>> snapshot(String owner) =>
+      _database.runInTransaction(() async {
+        await _database.requireOwner(owner);
+        return {
+          for (final row in await _database.readRecords(
+            'paddocks',
+            includeDeleted: true,
+          ))
+            row['id']! as String: jsonEncode(row),
+        };
+      });
+
+  Future<void> mergeRemote(
+    List<Paddock> items,
+    String owner,
+    Map<String, String> before,
+  ) => _database.runInTransaction(() async {
+    await _database.requireOwner(owner);
+    for (final item in items) {
+      final current = await _database.readRecord(
+        'paddocks',
+        item.id,
+        includeDeleted: true,
+      );
+      if (jsonEncode(current?.payload) != (before[item.id] ?? 'null')) continue;
+      await save(item, pending: false, verifiedRemoteOwner: owner);
+    }
+  });
 
   Future<void> markSynced(String id) {
     return _database.markRecordSynced('paddocks', id);
