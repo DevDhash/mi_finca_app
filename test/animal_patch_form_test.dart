@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/core/validation/local_form_duplicates.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -64,6 +65,9 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
+              localFormRecordsProvider(
+                'animals',
+              ).overrideWith((ref) => Stream.value(<Map<String, Object?>>[])),
               animalViewModelProvider.overrideWith(() => vm),
               paddockViewModelProvider.overrideWith(FormPaddocks.new),
             ],

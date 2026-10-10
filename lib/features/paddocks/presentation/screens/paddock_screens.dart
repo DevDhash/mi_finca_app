@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/core/validation/local_form_duplicates.dart';
 import 'package:mi_finca_app/features/paddocks/domain/value_objects/paddock_patch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -738,8 +739,19 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
     super.dispose();
   }
 
+  bool get duplicatesReady =>
+      ref.read(localFormRecordsProvider('paddocks')).hasValue;
+  bool get duplicateName => hasLocalFormDuplicate(
+    ref.read(localFormRecordsProvider('paddocks')).asData?.value ?? [],
+    name.text,
+    field: 'name',
+    excludingId: widget.paddock?.id,
+    ignoreCase: true,
+  );
+
   @override
   Widget build(BuildContext context) {
+    ref.watch(localFormRecordsProvider('paddocks'));
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -753,8 +765,10 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
           children: [
             TextFormField(
               controller: name,
-              onChanged: (_) => editedFields.add(PaddockField.name),
-              decoration: const InputDecoration(
+              onChanged: (_) =>
+                  setState(() => editedFields.add(PaddockField.name)),
+              decoration: InputDecoration(
+                errorText: duplicateName ? paddockDuplicateMessage : null,
                 labelText: 'Nombre del potrero',
               ),
               validator: req,
@@ -911,7 +925,7 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
             ),
             const SizedBox(height: 24),
             FilledButton(
-              onPressed: save,
+              onPressed: !duplicatesReady || duplicateName ? null : save,
               child: Text(
                 widget.paddock == null ? 'Agregar potrero' : 'Guardar cambios',
               ),
@@ -967,6 +981,7 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
   }
 
   Future<void> save() async {
+    if (!duplicatesReady || duplicateName) return;
     if (!key.currentState!.validate()) {
       return;
     }

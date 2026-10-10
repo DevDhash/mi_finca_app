@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/core/validation/local_form_duplicates.dart';
 import 'package:mi_finca_app/features/paddocks/presentation/widgets/movement_history_title.dart';
 import 'package:mi_finca_app/features/animals/domain/value_objects/animal_patch.dart';
 import 'package:mi_finca_app/features/animals/presentation/viewmodels/animal_photo_provider.dart';
@@ -313,8 +314,17 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
     }
   }
 
+  bool get duplicatesReady =>
+      ref.read(localFormRecordsProvider('animals')).hasValue;
+  bool get duplicateCode => hasLocalFormDuplicate(
+    ref.read(localFormRecordsProvider('animals')).asData?.value ?? [],
+    code.text,
+    field: 'code',
+    excludingId: widget.animal?.id,
+  );
+
   Future<void> save() async {
-    if (saving) return;
+    if (saving || !duplicatesReady || duplicateCode) return;
     if (!formKey.currentState!.validate()) {
       setState(() => step = 0);
       return;
@@ -396,6 +406,7 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(localFormRecordsProvider('animals'));
     final paddocks = ref.watch(paddockViewModelProvider).requireValue;
     return Scaffold(
       appBar: AppBar(
@@ -418,7 +429,7 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
               if (step > 0) const SizedBox(width: 12),
               Expanded(
                 child: FilledButton(
-                  onPressed: saving
+                  onPressed: saving || !duplicatesReady || duplicateCode
                       ? null
                       : step < 2
                       ? () => setState(() => step++)
@@ -491,8 +502,9 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
               const SizedBox(height: 20),
               TextFormField(
                 controller: code,
-                onChanged: (_) => touched.add(AnimalField.code),
-                decoration: const InputDecoration(
+                onChanged: (_) => setState(() => touched.add(AnimalField.code)),
+                decoration: InputDecoration(
+                  errorText: duplicateCode ? animalDuplicateMessage : null,
                   labelText: 'Nombre o código *',
                 ),
                 validator: (v) => v == null || v.trim().isEmpty

@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/core/validation/local_form_duplicates.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -97,6 +98,9 @@ void main() {
     vm = UIAnimals();
     container = ProviderContainer(
       overrides: [
+        localFormRecordsProvider(
+          'animals',
+        ).overrideWith((ref) => Stream.value(<Map<String, Object?>>[])),
         animalViewModelProvider.overrideWith(() => vm),
         paddockViewModelProvider.overrideWith(UIPaddocks.new),
         authViewModelProvider.overrideWith(UIAuth.new),
