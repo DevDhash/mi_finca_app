@@ -221,7 +221,7 @@ class _PaddockOrderOverview extends StatelessWidget {
               Expanded(
                 child: _PaddockOverviewItem(
                   value: '$readyCount',
-                  label: 'Listos',
+                  label: 'Disponibles',
                   color: AppColors.primary,
                 ),
               ),

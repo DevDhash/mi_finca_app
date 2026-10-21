@@ -30,7 +30,7 @@ class ConfigureFarm {
           areaHectares: 1,
           pastureType: 'Por definir',
           requiredRestDays: firstPaddockRestDays,
-          status: 'En uso',
+          status: 'Disponible',
           createdAt: now,
           updatedAt: now,
         ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mi_finca_app/core/validation/local_form_duplicates.dart';
 import 'package:mi_finca_app/features/paddocks/domain/entities/paddock.dart';
 import 'package:mi_finca_app/features/paddocks/domain/value_objects/paddock_patch.dart';
 import 'package:mi_finca_app/features/paddocks/presentation/viewmodels/paddock_view_model.dart';
@@ -40,7 +41,12 @@ void main() {
         );
         await tester.pumpWidget(
           ProviderScope(
-            overrides: [paddockViewModelProvider.overrideWith(() => vm)],
+            overrides: [
+              paddockViewModelProvider.overrideWith(() => vm),
+              localFormRecordsProvider('paddocks').overrideWith(
+                (ref) => Stream.value(<Map<String, Object?>>[]),
+              ),
+            ],
             child: MaterialApp(
               home: Builder(
                 builder: (context) => Scaffold(
@@ -68,6 +74,14 @@ void main() {
         await tester.pumpAndSettle();
         await tester.ensureVisible(find.text('Guardar cambios'));
         await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<FilledButton>(
+                find.widgetWithText(FilledButton, 'Guardar cambios'),
+              )
+              .onPressed,
+          isNotNull,
+        );
         await tester.tap(find.text('Guardar cambios'));
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);

@@ -185,8 +185,9 @@ void main() {
 
     final firstPaddock = paddockRepository.savedPaddocks.single;
     expect(firstPaddock.name, 'Potrero Alto');
-    expect(firstPaddock.status, 'En uso');
+    expect(firstPaddock.status, 'Disponible');
     expect(firstPaddock.requiredRestDays, 45);
+    expect(firstPaddock.grazingStartDate, isNull);
     expect(firstPaddock.lastGrazingEndDate, isNull);
   });
 }

@@ -352,7 +352,7 @@ class DashboardScreen extends ConsumerWidget {
                       child: _Metric(
                         iconPath: AppImages.iconPasto,
                         value: '$availablePaddocks/${paddocks.length}',
-                        label: 'Potreros libres',
+                        label: 'Potreros Disponibles',
                       ),
                     ),
                   ],
@@ -1070,10 +1070,12 @@ String _grazingAlertBody(ActivePaddockRotation active) {
 }
 
 bool _isPaddockAvailableNow(Paddock paddock, DateTime referenceDate) {
-  return PaddockOperationalStatus.calculate(
+  final operationalStatus = PaddockOperationalStatus.calculate(
     paddock,
     referenceDate: referenceDate,
-  ).canReceiveAnimals;
+  );
+
+  return operationalStatus.effectiveStatus == 'Disponible';
 }
 
 bool _needsRotationOrder(List<Paddock> paddocks) {
