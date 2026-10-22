@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/features/paddocks/presentation/widgets/pasture_autocomplete_field.dart';
 import 'package:mi_finca_app/core/validation/local_form_duplicates.dart';
 import 'package:mi_finca_app/features/paddocks/domain/value_objects/paddock_patch.dart';
 import 'package:flutter/material.dart';
@@ -798,10 +799,9 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
               },
             ),
             const SizedBox(height: 14),
-            TextFormField(
+            PastureAutocompleteField(
               controller: grass,
               onChanged: (_) => editedFields.add(PaddockField.pastureType),
-              decoration: const InputDecoration(labelText: 'Tipo de pastura'),
             ),
             const SizedBox(height: 14),
             TextFormField(
