@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/features/animals/presentation/widgets/breed_autocomplete_field.dart';
 import 'package:mi_finca_app/core/validation/local_form_duplicates.dart';
 import 'package:mi_finca_app/features/paddocks/presentation/widgets/movement_history_title.dart';
 import 'package:mi_finca_app/features/animals/domain/value_objects/animal_patch.dart';
@@ -432,7 +433,10 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
                   onPressed: saving || !duplicatesReady || duplicateCode
                       ? null
                       : step < 2
-                      ? () => setState(() => step++)
+                      ? () {
+                          FocusScope.of(context).unfocus();
+                          setState(() => step++);
+                        }
                       : save,
                   child: Text(step < 2 ? 'Siguiente' : 'Guardar animal'),
                 ),
@@ -535,12 +539,9 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
                     .toList(),
               ),
               const SizedBox(height: 14),
-              TextFormField(
+              BreedAutocompleteField(
                 controller: breed,
                 onChanged: (_) => touched.add(AnimalField.breed),
-                decoration: const InputDecoration(labelText: 'Raza *'),
-                validator: (v) =>
-                    v == null || v.trim().isEmpty ? 'Ingresa la raza' : null,
               ),
               const SizedBox(height: 14),
               SegmentedButton<String>(
