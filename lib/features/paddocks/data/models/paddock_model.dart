@@ -29,7 +29,7 @@ abstract final class PaddockModel {
   static Paddock fromJson(Map<String, Object?> j) => Paddock(
     id: j['id']! as String,
     name: j['name']! as String,
-    areaHectares: (j['areaHectares']! as num).toDouble(),
+    areaHectares: (j['areaHectares'] as num?)?.toDouble(),
     pastureType: (j['pastureType'] ?? j['grassType']) as String?,
     requiredRestDays: (j['requiredRestDays'] as num?)?.toInt(),
     rotationOrder: (j['rotationOrder'] as num?)?.toInt(),

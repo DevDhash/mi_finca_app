@@ -445,7 +445,9 @@ class _PaddockRouteCard extends StatelessWidget {
                       children: [
                         _PaddockFact(
                           icon: Icons.square_foot,
-                          text: '${paddock.areaHectares} ha',
+                          text: paddock.areaHectares == null
+                              ? 'Sin registrar'
+                              : '${paddock.areaHectares} ha',
                         ),
                         _PaddockAssetFact(
                           imagePath: AppImages.iconVaca,
@@ -719,7 +721,7 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
 
     if (paddock != null) {
       name.text = paddock.name;
-      area.text = paddock.areaHectares.toString();
+      area.text = paddock.areaHectares?.toString() ?? '';
       grass.text = paddock.grassType;
       restDays.text = paddock.requiredRestDays?.toString() ?? '';
       plannedGrazingDays.text = paddock.plannedGrazingDays?.toString() ?? '';
@@ -785,9 +787,8 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
                 suffixText: 'hectáreas',
               ),
               validator: (value) {
-                final parsed = double.tryParse(
-                  value?.replaceAll(',', '.') ?? '',
-                );
+                if (value == null || value.trim().isEmpty) return null;
+                final parsed = double.tryParse(value.replaceAll(',', '.'));
 
                 if (parsed == null) {
                   return 'Ingresa un área válida';
@@ -1015,7 +1016,9 @@ class _PaddockFormScreenState extends ConsumerState<PaddockFormScreen> {
     final paddock = Paddock(
       id: old?.id ?? const Uuid().v4(),
       name: name.text.trim(),
-      areaHectares: double.parse(area.text.replaceAll(',', '.')),
+      areaHectares: area.text.trim().isEmpty
+          ? null
+          : double.parse(area.text.replaceAll(',', '.')),
       pastureType: grass.text.trim().isEmpty ? null : grass.text.trim(),
       requiredRestDays: requiredRestDays,
       rotationOrder: old?.rotationOrder,
@@ -1168,7 +1171,7 @@ class PaddockDetailScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    '${paddock.areaHectares} hectáreas · ${paddock.grassType}',
+                    '${paddock.areaHectares == null ? 'Sin registrar' : '${paddock.areaHectares} hectáreas'} · ${paddock.grassType}',
                     style: const TextStyle(fontSize: 16),
                   ),
                   const SizedBox(height: 8),

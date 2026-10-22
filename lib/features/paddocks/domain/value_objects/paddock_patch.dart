@@ -31,7 +31,7 @@ class PaddockPatch {
       final v = entry.value;
       final valid = switch (entry.key) {
         PaddockField.name => v is String && v.trim().isNotEmpty,
-        PaddockField.area => v is num && v.isFinite && v >= 0,
+        PaddockField.area => v == null || (v is num && v.isFinite && v >= 0),
         PaddockField.pastureType => v == null || v is String,
         PaddockField.requiredRestDays ||
         PaddockField.rotationOrder ||

@@ -27,7 +27,7 @@ class ConfigureFarm {
         Paddock(
           id: const Uuid().v4(),
           name: firstPaddock.trim(),
-          areaHectares: 1,
+          areaHectares: null,
           pastureType: 'Por definir',
           requiredRestDays: firstPaddockRestDays,
           status: 'Disponible',

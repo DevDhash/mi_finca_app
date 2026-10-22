@@ -1,4 +1,7 @@
 import 'dart:convert';
+import 'package:mi_finca_app/features/paddocks/data/datasources/paddock_remote_datasource.dart';
+import 'package:mi_finca_app/features/paddocks/data/models/paddock_model.dart';
+import 'paddock_unknown_area_test.dart' show paddockWithArea;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -24,7 +27,11 @@ void main() {
       httpClient: MockClient((r) async {
         requests.add(r);
         return http.Response(
-          jsonEncode(response),
+          jsonEncode(
+            r.url.queryParameters['id']?.startsWith('gt.') == true
+                ? []
+                : response,
+          ),
           200,
           headers: {'content-type': 'application/json'},
           request: r,
@@ -65,6 +72,59 @@ void main() {
       ),
     },
   );
+  for (final area in <double?>[null, 1, 2.75]) {
+    test('remote readers and writers preserve area $area', () async {
+      final paddock = paddockWithArea(area);
+      response = [
+        {
+          'id': 'p',
+          'user_id': 'owner',
+          'name': 'Norte',
+          'area': area,
+          'created_at': '2026-01-01T00:00:00Z',
+          'updated_at': '2026-01-01T00:00:00Z',
+          'deleted_at': null,
+        },
+      ];
+      final direct = PaddockRemoteDataSource(client);
+      expect((await direct.getAll()).single.areaHectares, area);
+      final reconciled = await remote.readActivePaddock('p', 'owner');
+      expect(PaddockModel.fromJson(reconciled!).areaHectares, area);
+      requests.clear();
+      await direct.upsert(paddock);
+      expect(jsonDecode(requests.single.body)['area'], area);
+      expect(
+        (jsonDecode(requests.single.body) as Map).containsKey('area'),
+        isTrue,
+      );
+      requests.clear();
+      await remote.pushRecord(
+        PendingRecord(
+          collection: 'paddocks',
+          id: 'p',
+          updatedAt: DateTime.utc(2026),
+          payload: {
+            ...PaddockModel.toJson(paddock),
+            '_sync': SyncMetadata.operation(
+              ownerId: 'owner',
+              operation: 'upsert',
+              revision: 1,
+              requestedAt: DateTime.utc(2026),
+            ),
+          },
+        ),
+      );
+      final body = jsonDecode(requests.single.body) as Map;
+      expect(body.containsKey('area'), isTrue);
+      expect(body['area'], area);
+    });
+  }
+  for (final area in <double?>[null, 3.5]) {
+    test('area-only patch preserves explicit value $area', () async {
+      await remote.pushPaddockPatch(patch({'areaHectares': area}));
+      expect(jsonDecode(requests.single.body), {'area': area});
+    });
+  }
   test('PATCH body contains only intended name and safe predicates', () async {
     await remote.pushPaddockPatch(patch({'name': 'Norte'}));
     final r = requests.single;

@@ -62,7 +62,7 @@ class PaddockRemoteDataSource {
           (json) => Paddock(
             id: json['id'] as String,
             name: json['name'] as String,
-            areaHectares: (json['area'] as num?)?.toDouble() ?? 0,
+            areaHectares: (json['area'] as num?)?.toDouble(),
             pastureType: json['pasture_type'] as String?,
             requiredRestDays: (json['required_rest_days'] as num?)?.toInt(),
             rotationOrder: (json['rotation_order'] as num?)?.toInt(),

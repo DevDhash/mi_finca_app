@@ -23,73 +23,75 @@ class IntentViewModel extends PaddockViewModel {
 }
 
 void main() {
-  for (final nameOnly in [true, false]) {
-    testWidgets(
-      'form sends only ${nameOnly ? 'name' : 'explicit cleared pasture'} intent despite operational snapshot',
-      (tester) async {
-        final vm = IntentViewModel();
-        final paddock = Paddock(
-          id: 'p',
-          name: 'B',
-          areaHectares: 2,
-          pastureType: 'Pasto',
-          status: 'En uso',
-          grazingStartDate: DateTime.now(),
-          plannedGrazingDays: 4,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        );
-        await tester.pumpWidget(
-          ProviderScope(
-            overrides: [
-              paddockViewModelProvider.overrideWith(() => vm),
-              localFormRecordsProvider('paddocks').overrideWith(
-                (ref) => Stream.value(<Map<String, Object?>>[]),
-              ),
-            ],
-            child: MaterialApp(
-              home: Builder(
-                builder: (context) => Scaffold(
-                  body: TextButton(
-                    onPressed: () => openPaddockForm(context, paddock),
-                    child: const Text('Open'),
+  for (final unknownArea in [false, true]) {
+    for (final nameOnly in [true, false]) {
+      testWidgets(
+        'form sends only ${nameOnly ? 'name' : 'explicit cleared pasture'} intent despite operational snapshot unknownArea=$unknownArea',
+        (tester) async {
+          final vm = IntentViewModel();
+          final paddock = Paddock(
+            id: 'p',
+            name: 'B',
+            areaHectares: unknownArea ? null : 2,
+            pastureType: 'Pasto',
+            status: 'En uso',
+            grazingStartDate: DateTime.now(),
+            plannedGrazingDays: 4,
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          );
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: [
+                paddockViewModelProvider.overrideWith(() => vm),
+                localFormRecordsProvider(
+                  'paddocks',
+                ).overrideWith((ref) => Stream.value(<Map<String, Object?>>[])),
+              ],
+              child: MaterialApp(
+                home: Builder(
+                  builder: (context) => Scaffold(
+                    body: TextButton(
+                      onPressed: () => openPaddockForm(context, paddock),
+                      child: const Text('Open'),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        );
-        await tester.tap(find.text('Open'));
-        await tester.pumpAndSettle();
-        await tester.enterText(
-          find.byType(TextFormField).at(nameOnly ? 0 : 2),
-          nameOnly ? 'Norte' : '',
-        );
-        tester.testTextInput.hide();
-        await tester.scrollUntilVisible(
-          find.text('Guardar cambios'),
-          200,
-          scrollable: find.byType(Scrollable).first,
-        );
-        await tester.pumpAndSettle();
-        await tester.ensureVisible(find.text('Guardar cambios'));
-        await tester.pumpAndSettle();
-        expect(
-          tester
-              .widget<FilledButton>(
-                find.widgetWithText(FilledButton, 'Guardar cambios'),
-              )
-              .onPressed,
-          isNotNull,
-        );
-        await tester.tap(find.text('Guardar cambios'));
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull);
-        expect(
-          vm.patches.single.localValues,
-          nameOnly ? {'name': 'Norte'} : {'pastureType': null},
-        );
-      },
-    );
+          );
+          await tester.tap(find.text('Open'));
+          await tester.pumpAndSettle();
+          await tester.enterText(
+            find.byType(TextFormField).at(nameOnly ? 0 : 2),
+            nameOnly ? 'Norte' : '',
+          );
+          tester.testTextInput.hide();
+          await tester.scrollUntilVisible(
+            find.text('Guardar cambios'),
+            200,
+            scrollable: find.byType(Scrollable).first,
+          );
+          await tester.pumpAndSettle();
+          await tester.ensureVisible(find.text('Guardar cambios'));
+          await tester.pumpAndSettle();
+          expect(
+            tester
+                .widget<FilledButton>(
+                  find.widgetWithText(FilledButton, 'Guardar cambios'),
+                )
+                .onPressed,
+            isNotNull,
+          );
+          await tester.tap(find.text('Guardar cambios'));
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          expect(
+            vm.patches.single.localValues,
+            nameOnly ? {'name': 'Norte'} : {'pastureType': null},
+          );
+        },
+      );
+    }
   }
 }

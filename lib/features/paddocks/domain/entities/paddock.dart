@@ -24,7 +24,7 @@ class Paddock {
 
   final String id;
   final String name;
-  final double areaHectares;
+  final double? areaHectares;
   final String? pastureType;
   final int? requiredRestDays;
   final int? rotationOrder;
@@ -41,7 +41,7 @@ class Paddock {
 
   Paddock copyWith({
     String? name,
-    double? areaHectares,
+    Object? areaHectares = _notProvided,
     Object? grassType = _notProvided,
     Object? pastureType = _notProvided,
     Object? requiredRestDays = _notProvided,
@@ -56,7 +56,9 @@ class Paddock {
   }) => Paddock(
     id: id,
     name: name ?? this.name,
-    areaHectares: areaHectares ?? this.areaHectares,
+    areaHectares: areaHectares == _notProvided
+        ? this.areaHectares
+        : (areaHectares as num?)?.toDouble(),
     pastureType: pastureType != _notProvided
         ? pastureType as String?
         : grassType != _notProvided
