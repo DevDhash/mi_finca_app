@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/features/animals/domain/validators/animal_registration.dart';
 import 'package:mi_finca_app/features/animals/domain/value_objects/animal_move_command.dart';
 import 'package:mi_finca_app/features/animals/domain/value_objects/animal_patch.dart';
 import 'package:mi_finca_app/core/database/app_database.dart';
@@ -205,6 +206,12 @@ class AnimalRepositoryImpl
 
   @override
   Future<void> save(Animal animal) async {
+    // Validate only new local registrations; historical reads, updates and
+    // remote merges retain their existing contracts.
+    if (await _local.record(animal.id) == null) {
+      AnimalRegistration.validateNew(animal);
+      animal = animal.copyWith(code: animal.code.trim());
+    }
     await _local.save(animal);
   }
 

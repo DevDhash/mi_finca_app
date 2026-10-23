@@ -75,6 +75,16 @@ void main() {
           await tester.pumpAndSettle();
           if (!editing) {
             await tester.enterText(find.byType(TextFormField).first, 'NEW-1');
+            tester.testTextInput.hide();
+            await tester.pumpAndSettle();
+            final type = find.widgetWithText(ChoiceChip, 'Vaca');
+            await tester.ensureVisible(type);
+            await tester.pumpAndSettle();
+            await tester.tap(type);
+            final sex = find.text('Hembra');
+            await tester.ensureVisible(sex);
+            await tester.pumpAndSettle();
+            await tester.tap(sex);
           }
           final breed = find.widgetWithText(TextFormField, 'Raza *');
           await tester.scrollUntilVisible(

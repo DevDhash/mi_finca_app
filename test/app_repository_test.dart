@@ -87,6 +87,47 @@ void main() {
     expect(await syncRepository.pendingCount(), 1);
   });
 
+  test('QA-04 rejects invalid new registrations before persistence', () async {
+    final now = DateTime(2026);
+    for (final field in ['code', 'type', 'breed', 'sex', 'weight']) {
+      final animal = Animal(
+        id: 'invalid-$field',
+        code: field == 'code' ? '   ' : 'internal-1',
+        type: field == 'type' ? '' : 'Vaca',
+        breed: field == 'breed' ? '' : 'No especificada',
+        sex: field == 'sex' ? '' : 'Hembra',
+        weight: field == 'weight' ? -1 : null,
+        createdAt: now,
+        updatedAt: now,
+      );
+      await expectLater(animalRepository.save(animal), throwsFormatException);
+      expect(await database.readRecord('animals', animal.id), isNull);
+    }
+  });
+
+  test(
+    'QA-04 preserves historical incomplete rows and legacy updates',
+    () async {
+      final now = DateTime(2026);
+      final animal = Animal(
+        id: 'historical',
+        code: '',
+        type: '',
+        breed: '',
+        sex: '',
+        createdAt: now,
+        updatedAt: now,
+      );
+      await AnimalLocalDataSource(database).save(animal, pending: false);
+      expect((await animalRepository.getLocal()).single.code, '');
+      await animalRepository.save(animal.copyWith(notes: 'Historical note'));
+      expect(
+        (await animalRepository.getLocal()).single.notes,
+        'Historical note',
+      );
+    },
+  );
+
   test('marks the local outbox as synchronized', () async {
     final now = DateTime(2026, 6, 19);
 

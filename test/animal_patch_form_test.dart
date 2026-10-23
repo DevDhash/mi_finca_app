@@ -44,7 +44,7 @@ class FormPaddocks extends PaddockViewModel {
 }
 
 void main() {
-  for (final scenario in ['edit', 'move', 'missing']) {
+  for (final scenario in ['edit', 'move', 'missing', 'historical']) {
     final move = scenario == 'move';
     final missing = scenario == 'missing';
     testWidgets(
@@ -53,10 +53,10 @@ void main() {
         final vm = AnimalIntentVm();
         final animal = Animal(
           id: 'a',
-          code: 'A',
+          code: scenario == 'historical' ? '' : 'A',
           name: 'Luna',
           type: 'Vaca',
-          breed: 'X',
+          breed: scenario == 'historical' ? '' : 'X',
           sex: 'Hembra',
           paddockId: missing ? 'deleted-paddock' : 'B',
           createdAt: DateTime(2026),

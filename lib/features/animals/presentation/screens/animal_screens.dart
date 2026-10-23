@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/features/animals/domain/validators/animal_registration.dart';
 import 'package:mi_finca_app/features/animals/presentation/widgets/breed_autocomplete_field.dart';
 import 'package:mi_finca_app/core/validation/local_form_duplicates.dart';
 import 'package:mi_finca_app/features/paddocks/presentation/widgets/movement_history_title.dart';
@@ -256,8 +257,8 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
   final notes = TextEditingController();
   int step = 0;
   bool saving = false;
-  String type = 'Vaca';
-  String sex = 'Hembra';
+  String? type;
+  String? sex;
   String? paddockId;
   AnimalLocationMoveIntent? locationIntent;
   final touched = <AnimalField>{};
@@ -324,25 +325,69 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
     excludingId: widget.animal?.id,
   );
 
+  final errors = <String, String?>{};
+
+  bool validateDraft({required bool complete}) {
+    final first = <String, String?>{
+      'code': AnimalRegistration.codeError(code.text),
+      'type': AnimalRegistration.typeError(type),
+      'breed': AnimalRegistration.breedError(breed.text),
+      'sex': AnimalRegistration.sexError(sex),
+    };
+    // Untouched historical data must not become a new edit requirement.
+    if (widget.animal != null) {
+      for (final field in [
+        AnimalField.code,
+        AnimalField.type,
+        AnimalField.breed,
+        AnimalField.sex,
+      ]) {
+        if (!touched.contains(field)) first[field.name] = null;
+      }
+    }
+    final weightError =
+        widget.animal != null && !touched.contains(AnimalField.weight)
+        ? null
+        : AnimalRegistration.weightError(weight.text);
+    final invalidFirst = first.values.any((e) => e != null);
+    final invalid =
+        (complete || step == 0) && invalidFirst ||
+        (complete || step == 1) && weightError != null;
+    setState(() {
+      errors.clear();
+      if (complete || step == 0) errors.addAll(first);
+      if (complete || step == 1) errors['weight'] = weightError;
+      if (complete && invalid) step = invalidFirst ? 0 : 1;
+    });
+    return !invalid;
+  }
+
+  Widget fieldError(String field) => errors[field] == null
+      ? const SizedBox.shrink()
+      : Padding(
+          padding: const EdgeInsets.only(top: 8, left: 12),
+          child: Text(
+            errors[field]!,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        );
+
   Future<void> save() async {
     if (saving || !duplicatesReady || duplicateCode) return;
-    if (!formKey.currentState!.validate()) {
-      setState(() => step = 0);
-      return;
-    }
+    if (!validateDraft(complete: true)) return;
     final now = DateTime.now();
     final old = widget.animal;
     final animal = Animal(
       id: old?.id ?? const Uuid().v4(),
       code: code.text.trim(),
       name: name.text.trim().isEmpty ? null : name.text.trim(),
-      type: type,
+      type: type!,
       breed: breed.text.trim(),
-      sex: sex,
+      sex: sex!,
       localPhotoPath: localPhotoPath,
       remotePhotoPath: old?.remotePhotoPath,
       birthDate: birthDate,
-      weight: double.tryParse(weight.text.replaceAll(',', '.')),
+      weight: AnimalRegistration.parseWeight(weight.text),
       paddockId: paddockId,
       notes: notes.text.trim(),
       status: old?.status ?? 'Activo',
@@ -435,7 +480,9 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
                       : step < 2
                       ? () {
                           FocusScope.of(context).unfocus();
-                          setState(() => step++);
+                          if (validateDraft(complete: false)) {
+                            setState(() => step++);
+                          }
                         }
                       : save,
                   child: Text(step < 2 ? 'Siguiente' : 'Guardar animal'),
@@ -508,12 +555,12 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
                 controller: code,
                 onChanged: (_) => setState(() => touched.add(AnimalField.code)),
                 decoration: InputDecoration(
-                  errorText: duplicateCode ? animalDuplicateMessage : null,
-                  labelText: 'Nombre o código *',
+                  errorText: duplicateCode
+                      ? animalDuplicateMessage
+                      : errors['code'],
+                  labelText: 'Código / arete',
                 ),
-                validator: (v) => v == null || v.trim().isEmpty
-                    ? 'Ingresa un nombre o código'
-                    : null,
+                validator: (v) => AnimalRegistration.codeError(v ?? ''),
               ),
               const SizedBox(height: 14),
               TextFormField(
@@ -539,7 +586,9 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
                     .toList(),
               ),
               const SizedBox(height: 14),
+              fieldError('type'),
               BreedAutocompleteField(
+                errorText: errors['breed'],
                 controller: breed,
                 onChanged: (_) => touched.add(AnimalField.breed),
               ),
@@ -549,12 +598,14 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
                   ButtonSegment(value: 'Hembra', label: Text('Hembra')),
                   ButtonSegment(value: 'Macho', label: Text('Macho')),
                 ],
-                selected: {sex},
+                emptySelectionAllowed: true,
+                selected: {if (sex != null) sex!},
                 onSelectionChanged: (v) => setState(() {
-                  sex = v.first;
+                  sex = v.isEmpty ? null : v.first;
                   touched.add(AnimalField.sex);
                 }),
               ),
+              fieldError('sex'),
             ],
             if (step == 1) ...[
               ListTile(
@@ -588,7 +639,8 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
+                  errorText: errors['weight'],
                   labelText: 'Peso estimado',
                   suffixText: 'kg',
                 ),

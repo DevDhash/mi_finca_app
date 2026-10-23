@@ -9,8 +9,10 @@ class BreedAutocompleteField extends StatefulWidget {
     super.key,
     required this.controller,
     required this.onChanged,
+    this.errorText,
   });
 
+  final String? errorText;
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
 
@@ -124,7 +126,10 @@ class _BreedAutocompleteFieldState extends State<BreedAutocompleteField>
       key: _fieldKey,
       controller: controller,
       focusNode: focus,
-      decoration: const InputDecoration(labelText: 'Raza *'),
+      decoration: InputDecoration(
+        labelText: 'Raza *',
+        errorText: widget.errorText,
+      ),
       validator: (value) =>
           value == null || value.trim().isEmpty ? 'Ingresa la raza' : null,
       onChanged: widget.onChanged,
