@@ -16,6 +16,7 @@ import 'package:mi_finca_app/features/paddocks/domain/usecases/calculate_paddock
 import 'package:mi_finca_app/features/paddocks/presentation/viewmodels/paddock_view_model.dart';
 import 'package:mi_finca_app/features/profile/presentation/screens/profile_screen.dart';
 import 'package:mi_finca_app/features/sync/presentation/viewmodels/sync_view_model.dart';
+import 'package:mi_finca_app/features/sync/presentation/viewmodels/automatic_sync_provider.dart';
 import 'package:mi_finca_app/core/formatters/currency_formatter.dart';
 
 class MainShell extends ConsumerStatefulWidget {
@@ -1183,6 +1184,7 @@ class SyncScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(automaticSyncProvider);
     final sync = ref.watch(syncViewModelProvider).requireValue;
 
     final isOffline = !sync.isOnline;
@@ -1298,21 +1300,6 @@ class SyncScreen extends ConsumerWidget {
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 18),
-          SwitchListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-            title: const Text(
-              'Modo offline manual',
-              style: TextStyle(fontWeight: FontWeight.w800),
-            ),
-            subtitle: const Text(
-              'Úsalo para probar cómo responde la app cuando no hay internet.',
-            ),
-            value: sync.manualOffline,
-            onChanged: (offline) {
-              ref.read(syncViewModelProvider.notifier).setOnline(!offline);
-            },
           ),
           const SizedBox(height: 20),
           FilledButton.icon(

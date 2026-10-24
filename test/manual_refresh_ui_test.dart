@@ -1,3 +1,5 @@
+import 'package:mi_finca_app/features/sync/data/services/automatic_sync.dart';
+import 'package:mi_finca_app/features/sync/presentation/viewmodels/automatic_sync_provider.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +8,18 @@ import 'package:mi_finca_app/features/home/presentation/main_screens.dart';
 import 'package:mi_finca_app/features/sync/presentation/viewmodels/sync_view_model.dart';
 import 'package:mi_finca_app/features/sync/data/services/manual_data_refresh.dart';
 import 'photo_sync_view_model_test.dart' show FakeSyncRepository;
+
+// These tests isolate refresh presentation. Navigation tests exercise the real
+// coordinator, monitor and lifecycle together.
+AutomaticSync isolatedCoordinator(Ref ref) {
+  final worker = AutomaticSync(
+    sync: () async {},
+    pendingCount: () async => 0,
+    changes: const Stream<void>.empty(),
+  );
+  ref.onDispose(worker.dispose);
+  return worker;
+}
 
 void main() {
   for (final pending in [0, 2]) {
@@ -17,7 +31,10 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       final repo = FakeSyncRepository()..pending = pending;
       final container = ProviderContainer(
-        overrides: [syncRepositoryProvider.overrideWithValue(repo)],
+        overrides: [
+          automaticSyncProvider.overrideWith(isolatedCoordinator),
+          syncRepositoryProvider.overrideWithValue(repo),
+        ],
       );
       addTearDown(container.dispose);
       await container.read(syncViewModelProvider.future);
@@ -47,6 +64,7 @@ void main() {
     testWidgets('offline manual=$manual disables refresh', (tester) async {
       final container = ProviderContainer(
         overrides: [
+          automaticSyncProvider.overrideWith(isolatedCoordinator),
           syncRepositoryProvider.overrideWithValue(FakeSyncRepository()),
         ],
       );
@@ -100,6 +118,7 @@ void main() {
       );
       final container = ProviderContainer(
         overrides: [
+          automaticSyncProvider.overrideWith(isolatedCoordinator),
           syncRepositoryProvider.overrideWithValue(
             FakeSyncRepository()..pending = 0,
           ),
@@ -158,6 +177,7 @@ void main() {
     );
     final container = ProviderContainer(
       overrides: [
+        automaticSyncProvider.overrideWith(isolatedCoordinator),
         syncRepositoryProvider.overrideWithValue(
           FakeSyncRepository()..pending = 0,
         ),

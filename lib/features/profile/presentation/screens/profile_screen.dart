@@ -5,6 +5,7 @@ import 'package:mi_finca_app/app/theme/app_theme.dart';
 import 'package:mi_finca_app/features/auth/presentation/viewmodels/auth_view_model.dart';
 import 'package:mi_finca_app/features/farm/presentation/viewmodels/farm_view_model.dart';
 import 'package:mi_finca_app/features/sync/presentation/viewmodels/sync_view_model.dart';
+import 'package:mi_finca_app/features/sync/presentation/viewmodels/automatic_sync_provider.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -77,6 +78,7 @@ class ProfileScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(automaticSyncProvider);
     final sessionState = ref.watch(authViewModelProvider);
     final farmState = ref.watch(farmViewModelProvider);
     final syncState = ref.watch(syncViewModelProvider);
