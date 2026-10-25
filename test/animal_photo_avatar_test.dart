@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:mi_finca_app/core/constants/app_images.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mi_finca_app/features/animals/data/datasources/animal_photo_url_source.dart';
@@ -18,6 +19,47 @@ final pixel = base64Decode(
 );
 
 void main() {
+  for (final radius in [25.0, 28.0, 72.0]) {
+    testWidgets('default bull asset fits circular avatar radius $radius', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AnimalPhotoAvatar(
+              animalId: 'no-photo',
+              localPhotoPath: null,
+              remotePhotoPath: null,
+              radius: radius,
+            ),
+          ),
+        ),
+      );
+      await tester.runAsync(() async {
+        await precacheImage(
+          const AssetImage(AppImages.iconCabezaToro),
+          tester.element(find.byType(AnimalPhotoAvatar)),
+        );
+      });
+      await tester.pumpAndSettle();
+      final image = tester.widget<Image>(find.byType(Image));
+      expect((image.image as AssetImage).assetName, AppImages.iconCabezaToro);
+      expect(image.fit, BoxFit.contain);
+      expect(
+        tester.widget<CircleAvatar>(find.byType(CircleAvatar)).radius,
+        radius,
+      );
+      expect(
+        tester.getCenter(find.byType(Image)),
+        tester.getCenter(find.byType(CircleAvatar)),
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      debugNetworkImageHttpClientProvider = null;
+    });
+  }
+
   late PhotoSource source;
   late ImageHttpClient network;
   late Directory directory;

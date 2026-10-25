@@ -1,3 +1,4 @@
+import 'package:mi_finca_app/features/animals/domain/constants/cattle_categories.dart';
 import 'package:mi_finca_app/features/animals/domain/validators/animal_registration.dart';
 import 'package:mi_finca_app/features/animals/presentation/widgets/breed_autocomplete_field.dart';
 import 'package:mi_finca_app/core/validation/local_form_duplicates.dart';
@@ -13,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mi_finca_app/app/theme/app_theme.dart';
 import 'package:mi_finca_app/core/widgets/common_widgets.dart';
+import 'package:mi_finca_app/core/widgets/info_icon_button.dart';
 import 'package:mi_finca_app/features/animals/domain/entities/animal.dart';
 import 'package:mi_finca_app/features/animals/domain/entities/animal_location_move_intent.dart';
 import 'package:mi_finca_app/features/animals/presentation/viewmodels/animal_view_model.dart';
@@ -216,7 +218,6 @@ class AnimalListCard extends StatelessWidget {
         animalId: animal.id,
         remotePhotoPath: animal.remotePhotoPath,
         localPhotoPath: animal.localPhotoPath,
-        placeholder: const Icon(Icons.pets, color: AppColors.primaryDark),
       ),
       title: Text(
         animal.displayName,
@@ -276,7 +277,8 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
       weight.text = a.weight?.toString() ?? '';
       notes.text = a.notes;
       type = a.type;
-      sex = a.sex;
+      sex = CattleCategories.sexFor(type) ?? a.sex;
+      if (sex != a.sex) touched.add(AnimalField.sex);
       paddockId = a.paddockId;
       localPhotoPath = a.localPhotoPath;
       birthDate = a.birthDate;
@@ -316,6 +318,18 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
     }
   }
 
+  bool get hasPhoto {
+    // A linked remote photo may be temporarily unavailable offline. Keep it
+    // replaceable without claiming that it has loaded successfully.
+    if (widget.animal?.remotePhotoPath?.trim().isNotEmpty ?? false) return true;
+    if (localPhotoPath == null) return false;
+    try {
+      return File(localPhotoPath!).existsSync();
+    } on FileSystemException {
+      return false;
+    }
+  }
+
   bool get duplicatesReady =>
       ref.read(localFormRecordsProvider('animals')).hasValue;
   bool get duplicateCode => hasLocalFormDuplicate(
@@ -332,7 +346,7 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
       'code': AnimalRegistration.codeError(code.text),
       'type': AnimalRegistration.typeError(type),
       'breed': AnimalRegistration.breedError(breed.text),
-      'sex': AnimalRegistration.sexError(sex),
+      'sex': type == 'Otro' ? AnimalRegistration.sexError(sex) : null,
     };
     // Untouched historical data must not become a new edit requirement.
     if (widget.animal != null) {
@@ -516,6 +530,7 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
             if (step == 0) ...[
               Center(
                 child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                   onTap: () => showModalBottomSheet(
                     context: context,
                     builder: (_) => SafeArea(
@@ -541,16 +556,38 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
                       ),
                     ),
                   ),
-                  child: AnimalPhotoAvatar(
-                    radius: 62,
-                    animalId: widget.animal?.id ?? 'draft',
-                    remotePhotoPath: widget.animal?.remotePhotoPath,
-                    localPhotoPath: localPhotoPath,
-                    placeholder: const Icon(Icons.add_a_photo, size: 38),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IgnorePointer(
+                        child: AnimalPhotoAvatar(
+                          radius: 62,
+                          animalId: widget.animal?.id ?? 'draft',
+                          remotePhotoPath: widget.animal?.remotePhotoPath,
+                          localPhotoPath: localPhotoPath,
+                          placeholder: const Icon(Icons.add_a_photo, size: 38),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        hasPhoto ? 'Cambiar foto' : 'Agregar foto del animal',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primaryDark,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
               const SizedBox(height: 20),
+              const Text(
+                'Código / arete :',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
               TextFormField(
                 controller: code,
                 onChanged: (_) => setState(() => touched.add(AnimalField.code)),
@@ -558,28 +595,61 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
                   errorText: duplicateCode
                       ? animalDuplicateMessage
                       : errors['code'],
-                  labelText: 'Código / arete',
+                  hintText: 'Ej. 001',
+                  hintStyle: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 validator: (v) => AnimalRegistration.codeError(v ?? ''),
               ),
               const SizedBox(height: 14),
+              const Text(
+                'Nombre del animal :',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
               TextFormField(
                 controller: name,
                 onChanged: (_) => touched.add(AnimalField.name),
-                decoration: const InputDecoration(labelText: 'Nombre opcional'),
+                decoration: InputDecoration(
+                  hintText: 'Ej. Toribio',
+                  hintStyle: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ),
               const SizedBox(height: 14),
-              const Text('Tipo', style: TextStyle(fontWeight: FontWeight.bold)),
+              const Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      'Tipo',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  SizedBox(width: 4),
+                  InfoIconButton(
+                    tooltip: 'Información sobre el tipo de animal',
+                    title: '¿Cómo identificar el tipo de animal?',
+                    content: _AnimalTypeInfoContent(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
-                children: ['Vaca', 'Toro', 'Ternero', 'Novillo', 'Otro']
+                children: CattleCategories.sexes.keys
                     .map(
                       (v) => ChoiceChip(
                         label: Text(v),
                         selected: type == v,
                         onSelected: (_) => setState(() {
+                          if (type == v) return;
                           type = v;
-                          touched.add(AnimalField.type);
+                          sex = CattleCategories.sexFor(v);
+                          touched.addAll([AnimalField.type, AnimalField.sex]);
+                          errors.remove('type');
+                          errors.remove('sex');
                         }),
                       ),
                     )
@@ -587,25 +657,37 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
               ),
               const SizedBox(height: 14),
               fieldError('type'),
+              const Text(
+                'Raza :',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
               BreedAutocompleteField(
                 errorText: errors['breed'],
                 controller: breed,
                 onChanged: (_) => touched.add(AnimalField.breed),
               ),
-              const SizedBox(height: 14),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'Hembra', label: Text('Hembra')),
-                  ButtonSegment(value: 'Macho', label: Text('Macho')),
-                ],
-                emptySelectionAllowed: true,
-                selected: {if (sex != null) sex!},
-                onSelectionChanged: (v) => setState(() {
-                  sex = v.isEmpty ? null : v.first;
-                  touched.add(AnimalField.sex);
-                }),
-              ),
-              fieldError('sex'),
+              if (type == 'Otro') ...[
+                const SizedBox(height: 14),
+                const Text(
+                  'Sexo del animal :',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: 'Hembra', label: Text('Hembra')),
+                    ButtonSegment(value: 'Macho', label: Text('Macho')),
+                  ],
+                  emptySelectionAllowed: true,
+                  selected: {if (sex != null) sex!},
+                  onSelectionChanged: (v) => setState(() {
+                    sex = v.isEmpty ? null : v.first;
+                    touched.add(AnimalField.sex);
+                  }),
+                ),
+                fieldError('sex'),
+              ],
             ],
             if (step == 1) ...[
               ListTile(
@@ -721,6 +803,39 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AnimalTypeInfoContent extends StatelessWidget {
+  const _AnimalTypeInfoContent();
+
+  @override
+  Widget build(BuildContext context) {
+    final heading = Theme.of(
+      context,
+    ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Ternero / Ternera', style: heading),
+        const Text('Edad referencial: de 0 a 1.5 años.'),
+        const SizedBox(height: 16),
+        Text('Torete / Novilla', style: heading),
+        const Text('Edad referencial: de 1.5 a 2.5 años.'),
+        const SizedBox(height: 16),
+        Text('Toro / Vaca', style: heading),
+        const Text(
+          'Edad referencial: generalmente desde los 2.5 a 3 años, '
+          'según su desarrollo y condición reproductiva.',
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          'Las edades son referenciales. La clasificación también depende '
+          'del desarrollo y la condición reproductiva del animal. ',
+        ),
+      ],
     );
   }
 }
@@ -867,7 +982,6 @@ class _AnimalDetailScreenState extends ConsumerState<AnimalDetailScreen> {
               animalId: animal.id,
               remotePhotoPath: animal.remotePhotoPath,
               localPhotoPath: animal.localPhotoPath,
-              placeholder: const Icon(Icons.pets, size: 54),
             ),
           ),
           const SizedBox(height: 20),
@@ -1421,10 +1535,6 @@ class _MoveAnimalBatchScreenState extends ConsumerState<MoveAnimalBatchScreen> {
                                   animalId: animal.id,
                                   remotePhotoPath: animal.remotePhotoPath,
                                   localPhotoPath: animal.localPhotoPath,
-                                  placeholder: const Icon(
-                                    Icons.pets,
-                                    color: AppColors.primaryDark,
-                                  ),
                                 ),
 
                                 const SizedBox(width: 12),

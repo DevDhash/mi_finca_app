@@ -81,12 +81,8 @@ void main() {
             await tester.ensureVisible(type);
             await tester.pumpAndSettle();
             await tester.tap(type);
-            final sex = find.text('Hembra');
-            await tester.ensureVisible(sex);
-            await tester.pumpAndSettle();
-            await tester.tap(sex);
           }
-          final breed = find.widgetWithText(TextFormField, 'Raza *');
+          final breed = find.widgetWithText(TextFormField, 'Ej. Holstein');
           await tester.scrollUntilVisible(
             breed,
             150,

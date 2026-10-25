@@ -127,7 +127,10 @@ class _BreedAutocompleteFieldState extends State<BreedAutocompleteField>
       controller: controller,
       focusNode: focus,
       decoration: InputDecoration(
-        labelText: 'Raza *',
+        hintText: 'Ej. Holstein',
+        hintStyle: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
         errorText: widget.errorText,
       ),
       validator: (value) =>

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mi_finca_app/core/constants/app_images.dart';
 import 'package:mi_finca_app/core/network/network_status.dart';
 import 'package:mi_finca_app/features/animals/presentation/viewmodels/animal_photo_cache_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,28 +14,38 @@ class AnimalPhotoAvatar extends StatelessWidget {
     required this.localPhotoPath,
     required this.remotePhotoPath,
     required this.radius,
-    required this.placeholder,
+    this.placeholder,
   });
   final String animalId;
   final String? localPhotoPath;
   final String? remotePhotoPath;
   final double radius;
-  final Widget placeholder;
+  final Widget? placeholder;
 
   @override
-  Widget build(BuildContext context) => LocalAnimalPhotoAvatar(
-    localPhotoPath: localPhotoPath,
-    radius: radius,
-    placeholder: placeholder,
-    fallback: remotePhotoPath == null
-        ? null
-        : _RemotePhoto(
-            key: ValueKey((animalId, remotePhotoPath)),
-            photo: (animalId: animalId, objectPath: remotePhotoPath!),
-            diameter: radius * 2,
-            placeholder: placeholder,
-          ),
-  );
+  Widget build(BuildContext context) {
+    final effectivePlaceholder =
+        placeholder ??
+        Image.asset(
+          AppImages.iconCabezaToro,
+          width: radius * 1.5,
+          height: radius * 1.5,
+          fit: BoxFit.contain,
+        );
+    return LocalAnimalPhotoAvatar(
+      localPhotoPath: localPhotoPath,
+      radius: radius,
+      placeholder: effectivePlaceholder,
+      fallback: remotePhotoPath == null
+          ? null
+          : _RemotePhoto(
+              key: ValueKey((animalId, remotePhotoPath)),
+              photo: (animalId: animalId, objectPath: remotePhotoPath!),
+              diameter: radius * 2,
+              placeholder: effectivePlaceholder,
+            ),
+    );
+  }
 }
 
 class _RemotePhoto extends ConsumerStatefulWidget {
