@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mi_finca_app/app/theme/app_theme.dart';
 import 'package:mi_finca_app/core/constants/app_images.dart';
@@ -580,16 +579,12 @@ class FarmSetupScreen extends ConsumerStatefulWidget {
 class _FarmSetupScreenState extends ConsumerState<FarmSetupScreen> {
   final name = TextEditingController();
   final location = TextEditingController();
-  final paddock = TextEditingController();
-  final restDays = TextEditingController(text: '30');
   final formKey = GlobalKey<FormState>();
 
   @override
   void dispose() {
     name.dispose();
     location.dispose();
-    paddock.dispose();
-    restDays.dispose();
     super.dispose();
   }
 
@@ -628,7 +623,15 @@ class _FarmSetupScreenState extends ConsumerState<FarmSetupScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-
+              const Text(
+                'Ponle un nombre a tu finca para comenzar a organizar tu ganado',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: AppColors.muted,
+                  height: 1.3,
+                ),
+              ),
               const SizedBox(height: 24),
               TextFormField(
                 controller: name,
@@ -647,32 +650,6 @@ class _FarmSetupScreenState extends ConsumerState<FarmSetupScreen> {
                 decoration: const InputDecoration(labelText: 'Ubicación'),
                 validator: _requiredValidator,
               ),
-              const SizedBox(height: 14),
-              TextFormField(
-                controller: paddock,
-                textInputAction: TextInputAction.next,
-                textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(
-                  labelText: 'Nombre del primer potrero',
-                  hintText: 'Ejemplo: Potrero Norte',
-                ),
-                validator: _requiredValidator,
-              ),
-              const SizedBox(height: 14),
-              TextFormField(
-                controller: restDays,
-                keyboardType: TextInputType.number,
-                textInputAction: TextInputAction.done,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: const InputDecoration(
-                  labelText: 'Descanso requerido del primer potrero',
-                  suffixText: 'días',
-                  helperText:
-                      'Podrás cambiar este valor más adelante desde Potreros.',
-                  helperMaxLines: 2,
-                ),
-                validator: _positiveIntegerValidator,
-              ),
               const SizedBox(height: 24),
               SizedBox(
                 height: 56,
@@ -684,12 +661,7 @@ class _FarmSetupScreenState extends ConsumerState<FarmSetupScreen> {
 
                     await ref
                         .read(onboardingViewModelProvider.notifier)
-                        .configure(
-                          name.text.trim(),
-                          location.text.trim(),
-                          paddock.text.trim(),
-                          int.parse(restDays.text.trim()),
-                        );
+                        .configure(name.text.trim(), location.text.trim());
                   },
                   child: const Text(
                     'Guardar y comenzar',
@@ -707,16 +679,6 @@ class _FarmSetupScreenState extends ConsumerState<FarmSetupScreen> {
   String? _requiredValidator(String? value) {
     if (value == null || value.trim().isEmpty) {
       return 'Este dato es necesario';
-    }
-
-    return null;
-  }
-
-  String? _positiveIntegerValidator(String? value) {
-    final restDays = int.tryParse(value?.trim() ?? '');
-
-    if (restDays == null || restDays <= 0) {
-      return 'Ingresa un número entero mayor a cero';
     }
 
     return null;

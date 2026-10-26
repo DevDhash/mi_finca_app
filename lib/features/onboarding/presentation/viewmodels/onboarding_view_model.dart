@@ -10,10 +10,7 @@ import 'package:mi_finca_app/features/paddocks/presentation/viewmodels/paddock_v
 import 'package:mi_finca_app/features/sync/presentation/viewmodels/sync_view_model.dart';
 
 final configureFarmProvider = Provider(
-  (ref) => ConfigureFarm(
-    ref.watch(farmRepositoryProvider),
-    ref.watch(paddockRepositoryProvider),
-  ),
+  (ref) => ConfigureFarm(ref.watch(farmRepositoryProvider)),
 );
 final loadDemoDataProvider = Provider(
   (ref) => LoadDemoData(
@@ -31,19 +28,9 @@ final onboardingViewModelProvider =
 class OnboardingViewModel extends AsyncNotifier<void> {
   @override
   Future<void> build() async {}
-  Future<void> configure(
-    String name,
-    String location,
-    String firstPaddock,
-    int firstPaddockRestDays,
-  ) async {
+  Future<void> configure(String name, String location) async {
     state = const AsyncLoading();
-    final farm = await ref.read(configureFarmProvider)(
-      name,
-      location,
-      firstPaddock,
-      firstPaddockRestDays,
-    );
+    final farm = await ref.read(configureFarmProvider)(name, location);
     ref.read(farmViewModelProvider.notifier).setCurrent(farm);
     ref.invalidate(paddockViewModelProvider);
     ref.invalidate(syncViewModelProvider);

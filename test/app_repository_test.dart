@@ -18,10 +18,7 @@ import 'package:mi_finca_app/features/farm/data/datasources/farm_local_datasourc
 import 'package:mi_finca_app/features/farm/data/datasources/farm_remote_datasource.dart';
 import 'package:mi_finca_app/features/farm/data/repositories/farm_repository_impl.dart';
 import 'package:mi_finca_app/features/farm/domain/entities/farm.dart';
-import 'package:mi_finca_app/features/farm/domain/repositories/farm_repository.dart';
 import 'package:mi_finca_app/features/onboarding/domain/usecases/configure_farm.dart';
-import 'package:mi_finca_app/features/paddocks/domain/entities/paddock.dart';
-import 'package:mi_finca_app/features/paddocks/domain/repositories/paddock_repository.dart';
 import 'package:mi_finca_app/features/sync/data/datasources/mock_sync_remote_datasource.dart';
 import 'package:mi_finca_app/features/sync/data/datasources/sync_local_datasource.dart';
 import 'package:mi_finca_app/features/sync/data/repositories/sync_repository_impl.dart';
@@ -213,24 +210,22 @@ void main() {
     expect(await syncRepository.pendingCount(), 0);
   });
 
-  test('configures the first paddock with the selected rest days', () async {
-    final farmRepository = _MemoryFarmRepository();
-    final paddockRepository = _MemoryPaddockRepository();
-    final configureFarm = ConfigureFarm(farmRepository, paddockRepository);
+  test('configures only the farm without creating paddocks', () async {
+    final farmRepository = FarmRepositoryImpl(
+      local: FarmLocalDataSource(database),
+      remote: _FakeFarmRemoteDataSource(null, _testSupabaseClient()),
+    );
+    final configureFarm = ConfigureFarm(farmRepository);
 
-    final farm = await configureFarm('Finca Sur', 'Cusco', 'Potrero Alto', 45);
+    final farm = await configureFarm('  Finca Sur  ', '  Cusco  ');
 
+    expect(farm.id, isNotEmpty);
     expect(farm.name, 'Finca Sur');
-    expect(farmRepository.savedFarm, same(farm));
-    expect(paddockRepository.savedPaddocks, hasLength(1));
-
-    final firstPaddock = paddockRepository.savedPaddocks.single;
-    expect(firstPaddock.name, 'Potrero Alto');
-    expect(firstPaddock.areaHectares, isNull);
-    expect(firstPaddock.status, 'Disponible');
-    expect(firstPaddock.requiredRestDays, 45);
-    expect(firstPaddock.grazingStartDate, isNull);
-    expect(firstPaddock.lastGrazingEndDate, isNull);
+    expect(farm.location, 'Cusco');
+    expect((await farmRepository.getFarm())?.id, farm.id);
+    expect(await database.readRecords('farms'), hasLength(1));
+    expect(await database.readRecords('paddocks'), isEmpty);
+    expect(await syncRepository.pendingCount(), 1);
   });
 }
 
@@ -271,28 +266,4 @@ class _FakeFarmRemoteDataSource extends FarmRemoteDataSource {
 
   @override
   Future<void> upsertFarm(Farm farm) async {}
-}
-
-class _MemoryFarmRepository implements FarmRepository {
-  Farm? savedFarm;
-
-  @override
-  Future<Farm?> getFarm() async => savedFarm;
-
-  @override
-  Future<void> saveFarm(Farm farm) async {
-    savedFarm = farm;
-  }
-}
-
-class _MemoryPaddockRepository implements PaddockRepository {
-  final savedPaddocks = <Paddock>[];
-
-  @override
-  Future<List<Paddock>> getAll() async => savedPaddocks;
-
-  @override
-  Future<void> save(Paddock paddock) async {
-    savedPaddocks.add(paddock);
-  }
 }
