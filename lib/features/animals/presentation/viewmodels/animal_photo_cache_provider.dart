@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -12,6 +13,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Nullable for local-only hosts/tests which intentionally disable disk caching.
 final animalPhotoCacheServiceProvider = Provider<AnimalPhotoCache?>((ref) {
+  if (kIsWeb) return null;
   final database = ref.watch(databaseProvider);
   return AnimalPhotoCache(
     root: () async => Directory(

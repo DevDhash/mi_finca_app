@@ -17,7 +17,16 @@ part 'animal_move_store.dart';
 /// which keeps the UI independent from both SQLite and a future REST backend.
 final class AppDatabase extends GeneratedDatabase {
   AppDatabase([QueryExecutor? executor])
-    : super(executor ?? driftDatabase(name: 'mi_finca_mvp'));
+    : super(
+        executor ??
+            driftDatabase(
+              name: 'mi_finca_mvp',
+              web: DriftWebOptions(
+                sqlite3Wasm: Uri.parse('sqlite3.wasm'),
+                driftWorker: Uri.parse('drift_worker.js'),
+              ),
+            ),
+      );
 
   int _sessionGeneration = 0;
   int get sessionGeneration => _sessionGeneration;

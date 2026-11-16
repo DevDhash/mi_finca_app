@@ -150,6 +150,24 @@ void main() {
     },
   );
 
+  test(
+    'browser data URI survives reopen and uploads without filesystem access',
+    () async {
+      final uri =
+          'data:application/octet-stream;base64,${base64Encode(await photo.readAsBytes())}';
+      await local.save(animal(path: uri));
+      await database.close();
+      connect();
+      expect((await saved()).payload['localPhotoPath'], uri);
+      await sync.pushPendingChanges();
+      expect(storage.objects, hasLength(1));
+      expect((await job())['status'], 'published');
+      expect(await sync.pendingCount(), 0);
+      expect(remote.payloads.single.keys, isNot(contains('localPhotoPath')));
+      expect(remote.payloads.single.keys, isNot(contains('_photoUpload')));
+    },
+  );
+
   test('upload precedes publication; only remote path leaves device', () async {
     await local.save(animal());
     remote.beforePush = (_) async => expect(storage.objects, hasLength(1));

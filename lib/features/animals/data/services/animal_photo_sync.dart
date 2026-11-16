@@ -158,19 +158,26 @@ class AnimalPhotoSync {
         if (!await checkpoint({...job!, 'ownerId': owner})) return false;
       }
       if (job!['status'] != 'uploaded' && job!['status'] != 'published') {
-        final file = File(job!['localPath']! as String);
-        if (!await file.exists()) {
+        final localPath = job!['localPath']! as String;
+        final data = localPath.startsWith('data:')
+            ? Uri.parse(localPath).data
+            : null;
+        final file = data == null ? File(localPath) : null;
+        if (file != null && !await file.exists()) {
           throw const PhotoUploadFailure('missing_file');
         }
         // The picker already reduces images. Bound the standard upload's memory.
-        if (await file.length() > 6 * 1024 * 1024) {
+        if (file != null && await file.length() > 6 * 1024 * 1024) {
           throw const PhotoUploadFailure('file_too_large');
         }
-        final bytes = await file.readAsBytes();
+        final bytes = data?.contentAsBytes() ?? await file!.readAsBytes();
         if (bytes.isEmpty || bytes.length > 6 * 1024 * 1024) {
           throw const PhotoUploadFailure('invalid_size');
         }
-        final contentType = lookupMimeType(file.path, headerBytes: bytes);
+        final contentType = lookupMimeType(
+          data == null ? localPath : 'photo',
+          headerBytes: bytes,
+        );
         if (contentType == null || !contentType.startsWith('image/')) {
           throw const PhotoUploadFailure('unsupported_image');
         }

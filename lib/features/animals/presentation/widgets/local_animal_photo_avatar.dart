@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -20,6 +21,27 @@ class LocalAnimalPhotoAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (kIsWeb) {
+      final data = localPhotoPath?.startsWith('data:') == true
+          ? Uri.parse(localPhotoPath!).data
+          : null;
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: AppColors.primaryLight,
+        child: data == null
+            ? fallback ?? placeholder
+            : ClipOval(
+                child: Image.memory(
+                  data.contentAsBytes(),
+                  width: radius * 2,
+                  height: radius * 2,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, error, stackTrace) =>
+                      fallback ?? placeholder,
+                ),
+              ),
+      );
+    }
     final file = localPhotoPath == null ? null : File(localPhotoPath!);
     var exists = false;
     try {

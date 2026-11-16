@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:mi_finca_app/features/animals/domain/constants/cattle_categories.dart';
 import 'package:mi_finca_app/features/animals/domain/validators/animal_registration.dart';
 import 'package:mi_finca_app/features/animals/presentation/widgets/breed_autocomplete_field.dart';
@@ -300,6 +302,27 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
       maxWidth: 1600,
     );
     if (image == null) return;
+    if (kIsWeb) {
+      final bytes = await image.readAsBytes();
+      if (bytes.isEmpty || bytes.length > 6 * 1024 * 1024) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('La foto debe pesar como máximo 6 MB.'),
+            ),
+          );
+        }
+        return;
+      }
+      if (mounted) {
+        setState(() {
+          localPhotoPath =
+              'data:application/octet-stream;base64,${base64Encode(bytes)}';
+          photoTouched = true;
+        });
+      }
+      return;
+    }
     final directory = await getApplicationDocumentsDirectory();
     final photoDirectory = Directory(
       path.join(directory.path, 'animal_photos'),
@@ -323,6 +346,7 @@ class _AnimalFormScreenState extends ConsumerState<AnimalFormScreen> {
     // replaceable without claiming that it has loaded successfully.
     if (widget.animal?.remotePhotoPath?.trim().isNotEmpty ?? false) return true;
     if (localPhotoPath == null) return false;
+    if (kIsWeb) return localPhotoPath!.startsWith('data:');
     try {
       return File(localPhotoPath!).existsSync();
     } on FileSystemException {

@@ -103,7 +103,7 @@ class _InitializationError extends StatelessWidget {
       color: const Color(0xCCFBF8F0),
       child: SafeArea(
         child: Center(
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Card(
               child: Padding(

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:mi_finca_app/features/animals/presentation/viewmodels/animal_photo_cache_provider.dart';
@@ -31,10 +32,12 @@ final authRepositoryProvider = Provider<AuthRepository>(
     remote: ref.watch(supabaseAuthDataSourceProvider),
     clearLocalPhotos: (owner) async {
       await ref.read(animalPhotoCacheServiceProvider)?.clearOwner(owner);
-      final originals = Directory(
-        '${(await getApplicationDocumentsDirectory()).path}/animal_photos',
-      );
-      if (await originals.exists()) await originals.delete(recursive: true);
+      if (!kIsWeb) {
+        final originals = Directory(
+          '${(await getApplicationDocumentsDirectory()).path}/animal_photos',
+        );
+        if (await originals.exists()) await originals.delete(recursive: true);
+      }
       PaintingBinding.instance.imageCache.clear();
       PaintingBinding.instance.imageCache.clearLiveImages();
     },
